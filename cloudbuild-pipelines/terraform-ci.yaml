@@ -23,12 +23,10 @@ steps:
         
         if [ ! -s pr_body.txt ] || [ "$$(cat pr_body.txt)" = "null" ] || [ "$$(cat pr_body.txt)" = "" ]; then
           echo "⚠️ Note: Could not fetch PR body or empty. Using default scope."
-          cat <<EOF > pr_body.txt
-            deployment_request:
-              infrastructure:
-                - network
-              environment: dev
-            EOF
+          echo "deployment_request:" > pr_body.txt
+          echo "  infrastructure:" >> pr_body.txt
+          echo "    - network" >> pr_body.txt
+          echo "  environment: dev" >> pr_body.txt
         fi
         
         echo "📄 PR Deployment Request Content:"
@@ -119,18 +117,19 @@ steps:
     args:
       - '-c'
       - |
-        import json, subprocess
-        with open('deployment_scope.json') as f:
-            targets = json.load(f).get('targets', [])
-        
-        with open('checkov_report.txt', 'w') as out:
-            for t in targets:
-                target_dir = t['dir']
-                print(f"🛡️ Scanning {target_dir} with Checkov...")
-                cmd = ['checkov', '-d', target_dir, '--framework', 'terraform', '--soft-fail-on', 'LOW,MEDIUM']
-                res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-                out.write(res.stdout)
-                print(f"Checkov finished scanning {target_dir}")
+        import json, subprocess, os
+        if os.path.exists('deployment_scope.json'):
+            with open('deployment_scope.json') as f:
+                targets = json.load(f).get('targets', [])
+            
+            with open('checkov_report.txt', 'w') as out:
+                for t in targets:
+                    target_dir = t['dir']
+                    print("🛡️ Scanning " + str(target_dir) + " with Checkov...")
+                    cmd = ['checkov', '-d', target_dir, '--framework', 'terraform', '--soft-fail-on', 'LOW,MEDIUM']
+                    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                    out.write(res.stdout)
+                    print("Checkov finished scanning " + str(target_dir))
 
   # ----------------------------------------------------------------------------
   # Step 7: Terraform Plan Generation & Human-Readable Output
@@ -208,8 +207,9 @@ availableSecrets:
 substitutions:
   _REPO_OWNER: 'yuva-cloud-devops'
   _REPO_NAME: 'gcp-platform-foundation-terraform'
-  _STATE_BUCKET: 'yuvaraj-internal-project-terraform-state'
-  _PLAN_BUCKET: 'yuvaraj-internal-project-terraform-plans'
+  _PR_NUMBER: '1'
+  _STATE_BUCKET: 'gcp-remote-backend-tfstate-management-bucket'
+  _PLAN_BUCKET: 'gcp-tfplans-instancetemplate-strorage-bucket'
 
 options:
   logging: CLOUD_LOGGING_ONLY
