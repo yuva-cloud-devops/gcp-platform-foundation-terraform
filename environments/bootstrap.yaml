@@ -94,7 +94,7 @@ cloudbuild:
         comment_control: "COMMENTS_ENABLED_FOR_EXTERNAL_CONTRIBUTORS_ONLY"
       substitutions:
         _PR_NUMBER: "$(pull_request.number)"
-        _PR_BODY: "$(pull_request.comment)"
+        _REPO_OWNER: "yuva-cloud-devops"
 
     # 2. CD Trigger: Runs on Push/Merge to main
     cd_push_trigger:
