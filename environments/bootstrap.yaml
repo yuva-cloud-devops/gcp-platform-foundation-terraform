@@ -1,0 +1,71 @@
+project_id: yuvaraj-internal-project
+region: asia-south1
+gcs_location: ASIA-SOUTH1
+
+# -----------------------------------------------------------------------------
+# Google Cloud APIs to Enable
+# -----------------------------------------------------------------------------
+apis:
+  # Core & CI/CD
+  - cloudbuild.googleapis.com
+  - storage.googleapis.com
+  - cloudresourcemanager.googleapis.com
+  - iam.googleapis.com
+  - logging.googleapis.com
+  - serviceusage.googleapis.com
+
+  # Networking & Connectivity
+  - compute.googleapis.com
+  - networkmanagement.googleapis.com
+  - servicenetworking.googleapis.com
+
+  # Security & Availability (Cloud Armor & Load Balancing)
+  - iap.googleapis.com
+
+# -----------------------------------------------------------------------------
+# GCS Storage Buckets Configuration
+# -----------------------------------------------------------------------------
+buckets:
+  state_bucket:
+    name: gcp-remote-backend-tfstate-management-bucket
+    force_destroy: false
+    versioning: true
+    uniform_bucket_level_access: true
+
+  plan_bucket:
+    name: gcp-tfplans-instancetemplate-strorage-bucket
+    force_destroy: true
+    versioning: false
+    uniform_bucket_level_access: true
+    lifecycle_days: 14
+
+# -----------------------------------------------------------------------------
+# Dedicated Cloud Build Service Account & IAM Roles
+# -----------------------------------------------------------------------------
+service_account:
+  name: sa-cloudbuild-terraform
+  display_name: "Terraform Cloud Build Executor SA"
+  description: "Dedicated service account for running Terraform CI/CD pipelines"
+  
+  roles:
+    # Storage Access
+    - roles/storage.objectAdmin
+
+    # Pipeline & Logging
+    - roles/logging.logWriter
+
+    # 1-Network Infrastructure (VPC, Subnets, Routers, NATs, Firewall)
+    - roles/compute.networkAdmin
+
+    # 2-Compute Infrastructure (VMs, Disks, Instance Groups)
+    - roles/compute.instanceAdmin.v1
+    - roles/iam.serviceAccountUser
+
+    # 3-Security & Cloud Armor (Security Policies, Firewall Admin)
+    - roles/compute.securityAdmin
+
+    # 4-Availability & Load Balancing (Backend Services, URL Maps, Health Checks)
+    - roles/compute.loadBalancerAdmin
+
+    # Inspection
+    - roles/viewer

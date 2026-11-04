@@ -1,0 +1,120 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "NetworkInfrastructureConfig",
+  "type": "object",
+  "required": ["project_id", "region", "network"],
+  "properties": {
+    "project_id": {
+      "type": "string",
+      "minLength": 4,
+      "description": "GCP Project ID for provisioning"
+    },
+    "region": {
+      "type": "string",
+      "description": "Default GCP region"
+    },
+    "network": {
+      "type": "object",
+      "required": ["vpc"],
+      "properties": {
+        "vpc": {
+          "type": "object",
+          "required": ["network_name", "subnets"],
+          "properties": {
+            "network_name": {
+              "type": "string",
+              "description": "VPC Network name"
+            },
+            "subnets": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["subnet_name", "subnet_ip", "subnet_region"],
+                "properties": {
+                  "subnet_name": { "type": "string" },
+                  "subnet_ip": {
+                    "type": "string",
+                    "pattern": "^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}/[0-9]{1,2}$"
+                  },
+                  "subnet_region": { "type": "string" },
+                  "subnet_private_access": { "type": "boolean" }
+                }
+              }
+            },
+            "firewall_rules": {
+              "type": "object",
+              "properties": {
+                "ingress": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["name", "source_ranges", "ports"],
+                    "properties": {
+                      "name": { "type": "string" },
+                      "source_ranges": {
+                        "type": "array",
+                        "items": { "type": "string" }
+                      },
+                      "ports": {
+                        "type": "array",
+                        "items": { "type": "string" }
+                      }
+                    }
+                  }
+                },
+                "egress": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["name", "destination_ranges", "ports"],
+                    "properties": {
+                      "name": { "type": "string" },
+                      "destination_ranges": {
+                        "type": "array",
+                        "items": { "type": "string" }
+                      },
+                      "ports": {
+                        "type": "array",
+                        "items": { "type": "string" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "router": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "region", "bgp"],
+            "properties": {
+              "name": { "type": "string" },
+              "region": { "type": "string" },
+              "bgp": {
+                "type": "object",
+                "required": ["asn"],
+                "properties": {
+                  "asn": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "nat": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "region", "router_name"],
+            "properties": {
+              "name": { "type": "string" },
+              "region": { "type": "string" },
+              "router_name": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

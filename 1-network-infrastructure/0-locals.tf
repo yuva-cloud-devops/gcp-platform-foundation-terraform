@@ -1,7 +1,26 @@
 locals {
+
+
+  # Load environment-specific YAML configuration
+  config = yamldecode(
+    file("${path.root}/../environments/${var.environment}/network.yaml")
+  )
+
+  # Subnets naming Configurations:
+  subnets = [
+    for subnet in try(local.config.network.vpc.subnets, []) :
+    merge(
+      subnet,
+      {
+        subnet_name = "${subnet.subnet_name}-${var.environment}"
+      }
+    )
+  ]
+
+
   # Firewall Configuration for inbound rules:
   ingress_rules = [
-    for rule in try(var.network.vpc.firewall_rules.ingress, []) : {
+    for rule in try(local.config.network.vpc.firewall_rules.ingress, []) : {
       name          = rule.name
       source_ranges = rule.source_ranges
       allow = [
@@ -15,7 +34,7 @@ locals {
 
   # Firewall Configuration for outbound rules:
   egress_rules = [
-    for rule in try(var.network.vpc.firewall_rules.egress, []) : {
+    for rule in try(local.config.network.vpc.firewall_rules.egress, []) : {
       name               = rule.name
       destination_ranges = rule.destination_ranges
       allow = [

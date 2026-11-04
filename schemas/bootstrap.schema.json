@@ -1,0 +1,109 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "BootstrapInfrastructureConfig",
+    "type": "object",
+    "required": [
+        "project_id",
+        "region",
+        "gcs_location",
+        "apis",
+        "buckets",
+        "service_account"
+    ],
+    "properties": {
+        "project_id": {
+            "type": "string",
+            "minLength": 4
+        },
+        "region": {
+            "type": "string"
+        },
+        "gcs_location": {
+            "type": "string"
+        },
+        "apis": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        },
+        "buckets": {
+            "type": "object",
+            "required": [
+                "state_bucket",
+                "plan_bucket"
+            ],
+            "properties": {
+                "state_bucket": {
+                    "type": "object",
+                    "required": [
+                        "name",
+                        "versioning",
+                        "uniform_bucket_level_access"
+                    ],
+                    "properties": {
+                        "name": {
+                            "type": "string"
+                        },
+                        "force_destroy": {
+                            "type": "boolean"
+                        },
+                        "versioning": {
+                            "type": "boolean"
+                        },
+                        "uniform_bucket_level_access": {
+                            "type": "boolean"
+                        }
+                    }
+                },
+                "plan_bucket": {
+                    "type": "object",
+                    "required": [
+                        "name",
+                        "lifecycle_days",
+                        "uniform_bucket_level_access"
+                    ],
+                    "properties": {
+                        "name": {
+                            "type": "string"
+                        },
+                        "force_destroy": {
+                            "type": "boolean"
+                        },
+                        "lifecycle_days": {
+                            "type": "integer",
+                            "minimum": 1
+                        },
+                        "uniform_bucket_level_access": {
+                            "type": "boolean"
+                        }
+                    }
+                }
+            }
+        },
+        "service_account": {
+            "type": "object",
+            "required": [
+                "name",
+                "roles"
+            ],
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "display_name": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "roles": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,28 +1,28 @@
 # Creates VPC, subnets, routes, and firewall rules
 module "vpc" {
   # Only create if VPC configuration is provided
-  count = try(var.network.vpc, null) != null ? 1 : 0
+  count = try(local.config.network.vpc, null) != null ? 1 : 0
 
   source  = "terraform-google-modules/network/google"
   version = "~> 18.3"
 
   # Project Detials:
-  project_id = var.project_id
+  project_id = local.config.project_id
 
   # VPC Configurations:
-  network_name = var.network.vpc.network_name
-  routing_mode = try(var.network.vpc.routing_mode, "GLOBAL")
+  network_name = "${local.config.network.vpc.network_name}-${var.environment}"
+  routing_mode = try(local.config.network.vpc.routing_mode, "GLOBAL")
 
   # Subnet Configurations:
-  auto_create_subnetworks = try(var.network.vpc.auto_create_subnetworks, false)
-  subnets                 = try(var.network.vpc.subnets, [])
-  routes                  = try(var.network.vpc.routes, [])
+  auto_create_subnetworks = try(local.config.network.vpc.auto_create_subnetworks, false)
+  subnets                 = local.subnets
+  routes                  = try(local.config.network.vpc.routes, [])
 
   # Firewall Rules:
   ingress_rules = local.ingress_rules
   egress_rules  = local.egress_rules
 
   # Secondary CIDR & IGW Configurations:
-  secondary_ranges                       = try(var.network.vpc.secondary_ranges, {})
-  delete_default_internet_gateway_routes = try(var.network.vpc.delete_default_routes, false)
+  secondary_ranges                       = try(local.config.network.vpc.secondary_ranges, {})
+  delete_default_internet_gateway_routes = try(local.config.network.vpc.delete_default_routes, false)
 }

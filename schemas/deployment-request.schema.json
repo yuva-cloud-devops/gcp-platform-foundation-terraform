@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PRDeploymentRequest",
+  "description": "Validation schema for Pull Request and manual infrastructure deployment requests",
+  "type": "object",
+  "required": [
+    "deployment_request"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "deployment_request": {
+      "type": "object",
+      "required": [
+        "infrastructure",
+        "environment"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "infrastructure": {
+          "type": "array",
+          "description": "List of infrastructure layers to validate or deploy",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "network",
+              "compute",
+              "security",
+              "availability"
+            ]
+          }
+        },
+        "environment": {
+          "type": "string",
+          "description": "Target deployment environment folder",
+          "enum": [
+            "dev",
+            "qat",
+            "prod"
+          ]
+        },
+        "source_commit": {
+          "type": "string",
+          "description": "Git commit SHA for manual deployments",
+          "pattern": "^[0-9a-fA-F]{7,40}$"
+        },
+        "description": {
+          "type": "string",
+          "description": "Brief description of the changes being deployed"
+        },
+        "reason": {
+          "type": "string",
+          "description": "Justification for manual deployment or expedited rollout"
+        }
+      }
+    }
+  }
+}
