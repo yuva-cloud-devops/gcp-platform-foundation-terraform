@@ -20,4 +20,7 @@ locals {
   # Cloud Build Repositories & Triggers Map
   cloudbuild_repositories = try(local.config.cloudbuild.repositories, {})
   cloudbuild_triggers     = try(local.config.cloudbuild.triggers, {})
+
+  # Convert list of secrets to a set (handles empty/missing gracefully)
+  secrets = toset(try(local.config.secrets, []))
 }

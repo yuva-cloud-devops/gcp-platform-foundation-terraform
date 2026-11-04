@@ -1,0 +1,180 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ==============================================================================
+# Dynamic GitHub PR Comment Publisher (Detailed Plan & Security Breakdown)
+# ==============================================================================
+
+PR_NUMBER="${1:-}"
+REPO_OWNER="${2:-}"
+REPO_NAME="${3:-}"
+GITHUB_TOKEN="${4:-}"
+DEPLOYMENT_SCOPE="${5:-deployment_scope.json}"
+
+if [ -z "$PR_NUMBER" ] || [ -z "$REPO_OWNER" ] || [ -z "$REPO_NAME" ]; then
+  echo "⚠️ Missing PR metadata. Skipping PR comment."
+  exit 0
+fi
+
+if [ -z "$GITHUB_TOKEN" ]; then
+  echo "⚠️ GITHUB_TOKEN is empty. Skipping GitHub PR comment."
+  exit 0
+fi
+
+if [ ! -f "$DEPLOYMENT_SCOPE" ]; then
+  echo "❌ Error: '$DEPLOYMENT_SCOPE' not found."
+  exit 1
+fi
+
+ENV=$(jq -r '.environment // "dev"' "$DEPLOYMENT_SCOPE")
+TARGET_COUNT=$(jq '.targets | length' "$DEPLOYMENT_SCOPE")
+INFRAS_LIST=$(jq -r '[.targets[].name] | join(", ")' "$DEPLOYMENT_SCOPE")
+
+# ------------------------------------------------------------------------------
+# 1. Parse Security Results
+# ------------------------------------------------------------------------------
+GITLEAKS_STATUS="✅ No hardcoded secrets detected"
+if [ -f "gitleaks_report.txt" ] && grep -qi "leaks found" "gitleaks_report.txt"; then
+  GITLEAKS_STATUS="⚠️ Secrets or sensitive patterns detected (review logs)"
+fi
+
+TRIVY_STATUS="✅ 0 High/Critical vulnerabilities"
+if [ -f "trivy_report.txt" ]; then
+  TRIVY_CRIT=$(grep -oE "CRITICAL: [0-9]+" trivy_report.txt | head -n 1 || echo "")
+  TRIVY_HIGH=$(grep -oE "HIGH: [0-9]+" trivy_report.txt | head -n 1 || echo "")
+  if [ -n "$TRIVY_CRIT" ] || [ -n "$TRIVY_HIGH" ]; then
+    TRIVY_STATUS="⚠️ Vulnerabilities found: ${TRIVY_CRIT:-CRITICAL: 0}, ${TRIVY_HIGH:-HIGH: 0}"
+  fi
+fi
+
+CHECKOV_STATUS="✅ Passed CIS Benchmarks"
+if [ -f "checkov_report.txt" ]; then
+  PASSED_COUNT=$(grep -oE "Passed checks: [0-9]+" checkov_report.txt | tail -n 1 || echo "")
+  FAILED_COUNT=$(grep -oE "Failed checks: [0-9]+" checkov_report.txt | tail -n 1 || echo "")
+  if [ -n "$FAILED_COUNT" ] && [ "$FAILED_COUNT" != "Failed checks: 0" ]; then
+    CHECKOV_STATUS="⚠️ Policy issues: ${PASSED_COUNT}, ${FAILED_COUNT}"
+  elif [ -n "$PASSED_COUNT" ]; then
+    CHECKOV_STATUS="✅ All checks passed (${PASSED_COUNT})"
+  fi
+fi
+
+# ------------------------------------------------------------------------------
+# 2. Build the Header & Metadata Table
+# ------------------------------------------------------------------------------
+COMMENT_BODY=$(cat <<EOF
+## 🚀 Terraform Deployment Scope & Validation Report
+
+| **Attribute** | **Target Value** |
+| :--- | :--- |
+| **Target Environment** | \`${ENV^^}\` |
+| **Infrastructure In Scope** | \`${INFRAS_LIST^^}\` |
+| **Source Commit** | \`${SHORT_SHA:-latest}\` |
+| **Trigger Type** | Pull Request \`#${PR_NUMBER}\` |
+
+---
+
+### 🛡️ Security & Compliance Audit
+| Security Tool | Scope | Status / Finding |
+| :--- | :--- | :--- |
+| **Gitleaks** | Repository Commits & Files | ${GITLEAKS_STATUS} |
+| **Trivy** | Vulnerabilities & Misconfigurations | ${TRIVY_STATUS} |
+| **Checkov** | GCP CIS IaC Policies & Best Practices | ${CHECKOV_STATUS} |
+
+---
+
+### 📋 Planned Infrastructure Actions
+EOF
+)
+
+# ------------------------------------------------------------------------------
+# 3. Dynamic Infrastructure Plan Breakdown
+# ------------------------------------------------------------------------------
+for i in $(seq 0 $((TARGET_COUNT - 1))); do
+  DIR=$(jq -r ".targets[$i].dir" "$DEPLOYMENT_SCOPE")
+  NAME=$(jq -r ".targets[$i].name" "$DEPLOYMENT_SCOPE")
+  PLAN_TXT="$DIR/plan_readable.txt"
+
+  COMMENT_BODY+=$(cat <<EOF
+
+### 🔹 Infrastructure: **${NAME^^}** (\`${DIR}/\`)
+EOF
+)
+
+  if [ -f "$PLAN_TXT" ]; then
+    # Extract overall metrics line: Plan: X to add, Y to change, Z to destroy
+    PLAN_SUMMARY=$(grep -E 'Plan:|No changes.' "$PLAN_TXT" | tail -n 1 || echo "Plan completed")
+
+    # Extract human-readable summary of resources to create, update, or destroy
+    ACTION_ITEMS=$(grep -E '# [a-zA-Z0-9_.]+ will be (created|updated in-place|destroyed|replaced)' "$PLAN_TXT" | sed 's/^# / - /g' || true)
+
+    if [ -z "$ACTION_ITEMS" ]; then
+      if grep -q "No changes." "$PLAN_TXT"; then
+        ACTION_ITEMS=" - Infrastructure is up-to-date. No resources will be added or modified."
+      else
+        ACTION_ITEMS=" - Review full execution plan below for fine-grained resource updates."
+      fi
+    fi
+
+    COMMENT_BODY+=$(cat <<EOF
+
+**Status:** \`${PLAN_SUMMARY}\`
+
+**Summary of Resource Operations:**
+${ACTION_ITEMS}
+
+<details>
+<summary><b>🔍 View Full Terraform Execution Plan Diff for ${NAME^^}</b></summary>
+
+\`\`\`terraform
+$(head -n 250 "$PLAN_TXT")
+\`\`\`
+
+</details>
+
+EOF
+)
+  else
+    COMMENT_BODY+=$(cat <<EOF
+
+⚠️ *No execution plan output found for ${NAME} in ${DIR}*
+
+EOF
+)
+  fi
+done
+
+COMMENT_BODY+=$(cat <<EOF
+---
+*Automated report generated by Google Cloud Build for PR \`#${PR_NUMBER}\`.*
+EOF
+)
+
+# ------------------------------------------------------------------------------
+# 4. Post or Update PR Comment via GitHub API
+# ------------------------------------------------------------------------------
+echo "🔍 Checking for existing bot comment on PR #${PR_NUMBER}..."
+
+EXISTING_COMMENT_ID=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+  -H "Accept: application/vnd.github.v3+json" \
+  "https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/issues/${PR_NUMBER}/comments" \
+  | jq -r '.[] | select(.body | contains("Terraform Deployment Scope & Validation Report")) | .id' | head -n 1 || true)
+
+PAYLOAD=$(jq -n --arg body "$COMMENT_BODY" '{body: $body}')
+
+if [ -n "$EXISTING_COMMENT_ID" ] && [ "$EXISTING_COMMENT_ID" != "null" ]; then
+  echo "📝 Updating existing comment (ID: ${EXISTING_COMMENT_ID})..."
+  curl -s -X PATCH \
+    -H "Authorization: token $GITHUB_TOKEN" \
+    -H "Accept: application/vnd.github.v3+json" \
+    "https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/issues/comments/${EXISTING_COMMENT_ID}" \
+    -d "$PAYLOAD" > /dev/null
+  echo "✅ PR comment updated."
+else
+  echo "💬 Posting new PR comment..."
+  curl -s -X POST \
+    -H "Authorization: token $GITHUB_TOKEN" \
+    -H "Accept: application/vnd.github.v3+json" \
+    "https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/issues/${PR_NUMBER}/comments" \
+    -d "$PAYLOAD" > /dev/null
+  echo "✅ PR comment created."
+fi
