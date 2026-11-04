@@ -276,7 +276,7 @@ Once the state bucket (`terraform_state_bucket`) is created by Tier 0, downstrea
 ```hcl
 terraform {
   backend "gcs" {
-    bucket = "yuvaraj-internal-project-terraform-state"
+    bucket = "gcp-remote-backend-tfstate-management-bucket"
     prefix = "network/dev"
   }
 }

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ==============================================================================
-# PR Deployment Request Validator & Mapping Engine (Shell Script)
+# PR Deployment Request Validator & Mapping Engine (Pure Bash - No jq dependency)
 # ==============================================================================
 
 PAYLOAD_FILE="${1:-pr_body.txt}"
@@ -15,19 +15,17 @@ fi
 
 echo "🔍 Parsing deployment request from: $PAYLOAD_FILE"
 
-# 1. Extract environment using grep/awk/sed
+# 1. Extract environment (dev, qat, prod)
 ENV=$(grep -E '^[[:space:]]*environment:' "$PAYLOAD_FILE" | head -n 1 | awk '{print $2}' | tr -d '\r"' || true)
 
 if [ -z "$ENV" ]; then
   echo "❌ Error: Missing 'environment' in deployment_request."
-  echo "Expected: environment: dev | qat | prod"
   exit 1
 fi
 
-# Validate allowed environment
 case "$ENV" in
   dev|qat|prod)
-    echo "✅ Environment selected: $ENV"
+    echo "✅ Environment: $ENV"
     ;;
   *)
     echo "❌ Error: Invalid environment '$ENV'. Must be one of: dev, qat, prod"
@@ -35,13 +33,11 @@ case "$ENV" in
     ;;
 esac
 
-# 2. Extract infrastructure list
-# Reads lines following 'infrastructure:' until the next top-level key
+# 2. Extract requested infrastructure items
 INFRAS=()
 READING_INFRA=false
 
 while IFS= read -r line || [ -n "$line" ]; do
-  # Remove carriage return
   line=$(echo "$line" | tr -d '\r')
 
   if [[ "$line" =~ ^[[:space:]]*infrastructure: ]]; then
@@ -50,13 +46,11 @@ while IFS= read -r line || [ -n "$line" ]; do
   fi
 
   if [ "$READING_INFRA" = true ]; then
-    # Stop reading if line is another top-level key or closing fence
     if [[ "$line" =~ ^[[:space:]]*[a-zA-Z0-9_]+: ]] || [[ "$line" =~ ^\`\`\` ]]; then
       READING_INFRA=false
       continue
     fi
 
-    # Match list item: - network / - compute
     if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*([a-zA-Z0-9_-]+) ]]; then
       ITEM="${BASH_REMATCH[1]}"
       INFRAS+=("$ITEM")
@@ -65,27 +59,16 @@ while IFS= read -r line || [ -n "$line" ]; do
 done < "$PAYLOAD_FILE"
 
 if [ ${#INFRAS[@]} -eq 0 ]; then
-  echo "❌ Error: No infrastructure items found in 'infrastructure:' list."
-  echo "Expected format:"
-  echo "deployment_request:"
-  echo "  infrastructure:"
-  echo "    - network"
-  echo "  environment: $ENV"
+  echo "❌ Error: No infrastructure items found in deployment_request."
   exit 1
 fi
 
 echo "📋 Infrastructure requested: ${INFRAS[*]}"
 
-# 3. Mapping Dictionary & Directory Validation
-# Array to build targets JSON
-TARGETS_JSON="[]"
+# 3. Resolve directory & YAML paths (Pure Bash array construction)
+TARGET_ENTRIES=()
 
 for infra in "${INFRAS[@]}"; do
-  DIR=""
-  CONFIG_FILE=""
-  SCHEMA_FILE=""
-  ORDER=0
-
   case "$infra" in
     network)
       DIR="1-network-infrastructure"
@@ -112,50 +95,47 @@ for infra in "${INFRAS[@]}"; do
       ORDER=4
       ;;
     *)
-      echo "❌ Error: Unsupported infrastructure type: '$infra'"
-      echo "Allowed: network, compute, security, availability"
+      echo "❌ Error: Unsupported infrastructure type '$infra'"
       exit 1
       ;;
   esac
 
-  # Verify target folder and YAML file existence
   if [ ! -d "$DIR" ]; then
-    echo "❌ Error: Target directory '$DIR' does not exist in repository."
+    echo "❌ Error: Directory '$DIR' not found."
     exit 1
   fi
 
   if [ ! -f "$CONFIG_FILE" ]; then
-    echo "❌ Error: Configuration file '$CONFIG_FILE' does not exist."
+    echo "❌ Error: Config file '$CONFIG_FILE' not found."
     exit 1
   fi
 
-  # Append to targets JSON array
-  TARGET_ENTRY=$(cat <<EOF
-{
-  "name": "$infra",
-  "dir": "$DIR",
-  "config": "$CONFIG_FILE",
-  "schema": "$SCHEMA_FILE",
-  "order": $ORDER
-}
+  ENTRY=$(cat <<EOF
+    {
+      "name": "$infra",
+      "dir": "$DIR",
+      "config": "$CONFIG_FILE",
+      "schema": "$SCHEMA_FILE",
+      "order": $ORDER
+    }
 EOF
 )
-  TARGETS_JSON=$(echo "$TARGETS_JSON" | jq ". += [$TARGET_ENTRY]")
+  TARGET_ENTRIES+=("$ENTRY")
 done
 
-# 4. Sort targets by execution order (network -> compute -> security -> availability)
-SORTED_TARGETS=$(echo "$TARGETS_JSON" | jq 'sort_by(.order)')
-
-# 5. Build final deployment_scope.json
+# 4. Construct deployment_scope.json without jq
 cat <<EOF > "$OUTPUT_JSON"
 {
   "environment": "$ENV",
-  "targets": $SORTED_TARGETS
+  "targets": [
+$(IFS=,; echo "${TARGET_ENTRIES[*]}")
+  ]
 }
 EOF
 
 echo "=========================================================="
-echo "✅ deployment_scope.json successfully generated:"
+echo "✅ deployment_scope.json generated successfully:"
 echo "=========================================================="
-cat "$OUTPUT_JSON" | jq .
+cat "$OUTPUT_JSON"
+echo ""
 echo "=========================================================="

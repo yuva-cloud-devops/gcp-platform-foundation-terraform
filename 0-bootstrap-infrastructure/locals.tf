@@ -15,4 +15,9 @@ locals {
   sa_desc  = lookup(local.config.service_account, "description", "Cloud Build SA")
   sa_disp  = lookup(local.config.service_account, "display_name", local.sa_name)
   sa_roles = toset(local.config.service_account.roles)
+
+
+  # Cloud Build Repositories & Triggers Map
+  cloudbuild_repositories = try(local.config.cloudbuild.repositories, {})
+  cloudbuild_triggers     = try(local.config.cloudbuild.triggers, {})
 }

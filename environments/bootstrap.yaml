@@ -21,6 +21,7 @@ apis:
 
   # Security & Availability (Cloud Armor & Load Balancing)
   - iap.googleapis.com
+  - secretmanager.googleapis.com
 
 # -----------------------------------------------------------------------------
 # GCS Storage Buckets Configuration
@@ -69,3 +70,39 @@ service_account:
 
     # Inspection
     - roles/viewer
+
+
+# -----------------------------------------------------------------------------
+# Cloud Build Repositories & Dynamic Triggers
+# -----------------------------------------------------------------------------
+cloudbuild:
+  repositories:
+    github_repo:
+      name: gcp-platform-foundation-terraform
+      parent_connection: projects/yuvaraj-internal-project/locations/asia-south1/connections/github-connection
+      remote_uri: "https://github.com/yuva-cloud-devops/gcp-platform-foundation-terraform.git"
+
+  triggers:
+    # 1. CI Trigger: Runs on Pull Requests
+    ci_pr_trigger:
+      name: terraform-platform-ci
+      description: "Automated Terraform PR validation & planning"
+      filename: "cloudbuild-pipelines/terraform-ci.yaml"
+      repository_key: "github_repo"
+      pull_request:
+        branch: "^main$"
+        comment_control: "COMMENTS_ENABLED_FOR_EXTERNAL_CONTRIBUTORS_ONLY"
+      substitutions:
+        _PR_NUMBER: "$(pull_request.number)"
+        _PR_BODY: "$(pull_request.comment)"
+
+    # 2. CD Trigger: Runs on Push/Merge to main
+    cd_push_trigger:
+      name: terraform-platform-cd
+      description: "Automated Terraform apply on merge to main"
+      filename: "cloudbuild-pipelines/terraform-cd.yaml"
+      repository_key: "github_repo"
+      push:
+        branch: "^main$"
+      substitutions:
+        _AUTO_APPROVE: "true"

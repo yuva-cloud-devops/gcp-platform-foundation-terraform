@@ -1,0 +1,8 @@
+deployment_request:
+  infrastructure:
+    - network
+    - security
+    - compute
+    - availability
+  environment: dev
+  description: "Test network deployment"

@@ -1,0 +1,30 @@
+{
+  "environment": "dev",
+  "targets": [
+    {
+      "name": "network",
+      "dir": "1-network-infrastructure",
+      "config": "environments/dev/network.yaml",
+      "schema": "schemas/network.schema.json",
+      "order": 1
+    },    {
+      "name": "security",
+      "dir": "3-security-infrastructure",
+      "config": "environments/dev/security.yaml",
+      "schema": "schemas/security.schema.json",
+      "order": 3
+    },    {
+      "name": "compute",
+      "dir": "2-compute-infrastructure",
+      "config": "environments/dev/compute.yaml",
+      "schema": "schemas/compute.schema.json",
+      "order": 2
+    },    {
+      "name": "availability",
+      "dir": "4-availability-infrastructure",
+      "config": "environments/dev/availability.yaml",
+      "schema": "schemas/availability.schema.json",
+      "order": 4
+    }
+  ]
+}
