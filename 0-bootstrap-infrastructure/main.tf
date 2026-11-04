@@ -95,3 +95,18 @@ resource "google_service_account_iam_member" "cloudbuild_impersonation" {
 
   depends_on = [google_project_service.apis]
 }
+
+
+# -----------------------------------------------------------------------------
+# Dynamic Secret Manager IAM Access
+# -----------------------------------------------------------------------------
+resource "google_secret_manager_secret_iam_member" "cloudbuild_secret_accessor" {
+  for_each = local.secrets
+
+  secret_id = each.key
+  project   = local.project_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.cloudbuild_sa.email}"
+
+  depends_on = [google_project_service.apis]
+}

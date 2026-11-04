@@ -106,3 +106,7 @@ cloudbuild:
         branch: "^main$"
       substitutions:
         _AUTO_APPROVE: "true"
+
+
+secrets:
+  - "github-pr-token"
