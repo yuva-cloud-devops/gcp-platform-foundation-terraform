@@ -1,11 +1,11 @@
 # ==============================================================================
-# Pipeline 1: Terraform PR Validation Pipeline (CI - Shell Based)
+# Pipeline 1: Terraform PR Validation Pipeline (CI)
 # Trigger: Pull Request against main
 # ==============================================================================
 
 steps:
   # ----------------------------------------------------------------------------
-  # Step 1: Parse PR Scope & Generate deployment_scope.json
+  # Step 1: Parse PR Deployment Scope
   # ----------------------------------------------------------------------------
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
     id: 'parse-pr-scope'
@@ -13,6 +13,7 @@ steps:
     args:
       - '-c'
       - |
+        apt-get update && apt-get install -y jq
         chmod +x cloudbuild-pipelines/scripts/*.sh
         echo "$_PR_BODY" > pr_body.txt
         ./cloudbuild-pipelines/scripts/validate-request.sh pr_body.txt
@@ -26,6 +27,7 @@ steps:
     args:
       - '-c'
       - |
+        apt-get update && apt-get install -y jq
         chmod +x cloudbuild-pipelines/scripts/*.sh
         TARGET_COUNT=$(jq '.targets | length' deployment_scope.json)
         
@@ -35,7 +37,7 @@ steps:
         done
 
   # ----------------------------------------------------------------------------
-  # Step 3: Dynamic Terraform Format, Init & Validate
+  # Step 3: Terraform Format Check, Init & Validate
   # ----------------------------------------------------------------------------
   - name: 'hashicorp/terraform:1.6'
     id: 'terraform-validate'
@@ -52,16 +54,18 @@ steps:
           NAME=$(jq -r ".targets[$i].name" deployment_scope.json)
           
           echo "=========================================================="
-          echo "🚀 Processing: $NAME ($DIR) for ENV: $ENV"
+          echo "🚀 Validating: $NAME in $DIR (Env: $ENV)"
           echo "=========================================================="
           
-          echo "1. Formatting check..."
+          echo "1. Format Check..."
           terraform -chdir="$DIR" fmt -check
           
-          echo "2. Initializing backend prefix: ${ENV}/${NAME}..."
-          terraform -chdir="$DIR" init -backend-config="bucket=${_STATE_BUCKET}" -backend-config="prefix=${ENV}/${NAME}"
+          echo "2. Initializing remote state prefix: remote-state-management/${ENV}/${NAME}..."
+          terraform -chdir="$DIR" init \
+            -backend-config="bucket=${_STATE_BUCKET}" \
+            -backend-config="prefix=remote-state-management/${ENV}/${NAME}"
           
-          echo "3. Validating Terraform configuration..."
+          echo "3. Validating Terraform code..."
           terraform -chdir="$DIR" validate
         done
 
@@ -84,7 +88,7 @@ steps:
         done
 
   # ----------------------------------------------------------------------------
-  # Step 5: Terraform Plan & Secure GCS Upload
+  # Step 5: Terraform Plan Generation
   # ----------------------------------------------------------------------------
   - name: 'hashicorp/terraform:1.6'
     id: 'terraform-plan'
@@ -100,19 +104,20 @@ steps:
           DIR=$(jq -r ".targets[$i].dir" deployment_scope.json)
           NAME=$(jq -r ".targets[$i].name" deployment_scope.json)
           
-          echo "📝 Generating Plan for $NAME ($DIR)..."
+          echo "📝 Generating binary plan for $NAME..."
           terraform -chdir="$DIR" plan -var="environment=${ENV}" -out="tfplan.binary" -no-color
         done
 
   # ----------------------------------------------------------------------------
-  # Step 6: Store Plan Artifacts in GCS
+  # Step 6: Store Approved Binary Plan in GCS Plan Bucket
   # ----------------------------------------------------------------------------
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
-    id: 'upload-plans-to-gcs'
+    id: 'upload-plan-to-gcs'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
+        apt-get update && apt-get install -y jq
         ENV=$(jq -r '.environment' deployment_scope.json)
         TARGET_COUNT=$(jq '.targets | length' deployment_scope.json)
 
@@ -121,17 +126,19 @@ steps:
           NAME=$(jq -r ".targets[$i].name" deployment_scope.json)
           
           if [ -f "$DIR/tfplan.binary" ]; then
-            GCS_DEST="gs://${_PLAN_BUCKET}/plans/${_PR_NUMBER}/${SHORT_SHA}/${NAME}-${ENV}.tfplan"
-            echo "📦 Uploading $DIR/tfplan.binary to $GCS_DEST"
-            gsutil cp "$DIR/tfplan.binary" "$GCS_DEST"
+            DEST="gs://${_PLAN_BUCKET}/tf-plan-review/${_PR_NUMBER}/${SHORT_SHA}/${NAME}-${ENV}.tfplan"
+            echo "📦 Uploading binary plan to: $DEST"
+            gsutil cp "$DIR/tfplan.binary" "$DEST"
           fi
         done
 
 substitutions:
   _PR_NUMBER: '${_PR_NUMBER}'
   _PR_BODY: '${_PR_BODY}'
-  _STATE_BUCKET: 'your-org-terraform-state-bucket'
-  _PLAN_BUCKET: 'your-org-terraform-plans-bucket'
+  _STATE_BUCKET: 'yuvaraj-internal-project-terraform-state'
+  _PLAN_BUCKET: 'yuvaraj-internal-project-terraform-plans'
+
+serviceAccount: 'projects/yuvaraj-internal-project/serviceAccounts/sa-cloudbuild-terraform@yuvaraj-internal-project.iam.gserviceaccount.com'
 
 options:
   logging: CLOUD_LOGGING_ONLY
