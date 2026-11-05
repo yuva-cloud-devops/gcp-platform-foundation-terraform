@@ -120,10 +120,8 @@ steps:
 
           echo "2. Initializing remote state prefix: $${ENV}/$${NAME}..."
           
-          cat <<EOF > "$$DIR/$${NAME}-$${ENV}-backend.hcl"
-          bucket = "${_STATE_BUCKET}"
-          prefix = "$${ENV}/$${NAME}"
-          EOF
+          echo "bucket = \"${_STATE_BUCKET}\"" > "$$DIR/$${NAME}-$${ENV}-backend.hcl"
+          echo "prefix = \"$$ENV/$$NAME\"" >> "$$DIR/$${NAME}-$${ENV}-backend.hcl"
 
           echo "📄 Generated $$DIR/$${NAME}-$${ENV}-backend.hcl:"
           cat "$$DIR/$${NAME}-$${ENV}-backend.hcl"
@@ -190,11 +188,6 @@ steps:
           echo "=========================================================="
           echo "📋 Planning: $$NAME in $$DIR (Env: $$ENV)"
           echo "=========================================================="
-
-          cat <<EOF > "$$DIR/$${NAME}-$${ENV}-backend.hcl"
-          bucket = "${_STATE_BUCKET}"
-          prefix = "$${ENV}/$${NAME}"
-          EOF
 
           echo "📄 Generated $$DIR/$${NAME}-$${ENV}-backend.hcl:"
           cat "$$DIR/$${NAME}-$${ENV}-backend.hcl"
