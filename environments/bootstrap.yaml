@@ -95,6 +95,7 @@ cloudbuild:
       substitutions:
         _PR_NUMBER: "$(pull_request.number)"
         _REPO_OWNER: "yuva-cloud-devops"
+        _GITHUB_APP_ID: "5622633"
 
     # 2. CD Trigger: Runs on Push/Merge to main
     cd_push_trigger:
@@ -109,4 +110,4 @@ cloudbuild:
 
 
 secrets:
-  - "github-pr-token"
+  - "github-app-private-key"

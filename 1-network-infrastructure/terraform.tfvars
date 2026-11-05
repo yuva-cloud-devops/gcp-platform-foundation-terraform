@@ -88,4 +88,5 @@
 
 
 
-environment = "dev"
+# environment = "dev"
+# terraform plan -var="environment=dev"

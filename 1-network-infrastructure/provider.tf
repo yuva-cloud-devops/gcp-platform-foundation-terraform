@@ -8,9 +8,17 @@ terraform {
       version = "~> 6.0"
     }
   }
+
+  # ----------------------------------------------------------------------------
+  # Remote Backend (GCS)
+  # Dynamic configuration injected by Cloud Build via -backend-config
+  # ----------------------------------------------------------------------------
+  backend "gcs" {}
 }
+
 
 provider "google" {
   project = local.config.project_id
   region  = local.config.region
 }
+
