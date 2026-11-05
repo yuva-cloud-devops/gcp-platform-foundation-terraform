@@ -2,9 +2,7 @@
 
 /**
  * ==============================================================================
- * GitHub App PR Bot Publisher
- * Authenticates as GitHub App via JWT -> Parses Detailed Security Audits
- * -> Parses Structured tfplan.json -> Posts/Updates PR Review Comment
+ * GitHub App PR Bot Publisher (Robust Dynamic Parsers)
  * ==============================================================================
  */
 
@@ -12,9 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-// ------------------------------------------------------------------------------
-// 1. Environment & Parameter Setup
-// ------------------------------------------------------------------------------
+// 1. Environment & Inputs
 const APP_ID = process.env.GITHUB_APP_ID;
 const PRIVATE_KEY = process.env.GITHUB_APP_PRIVATE_KEY;
 const PR_NUMBER = process.env.PR_NUMBER || process.argv[2];
@@ -29,13 +25,11 @@ if (!APP_ID || !PRIVATE_KEY) {
 }
 
 if (!PR_NUMBER || !REPO_OWNER || !REPO_NAME) {
-    console.log('⚠️ Missing PR metadata. Skipping PR comment publication.');
+    console.log('⚠️ Missing PR metadata. Skipping comment publication.');
     process.exit(0);
 }
 
-// ------------------------------------------------------------------------------
-// 2. JWT Generation & GitHub App Authentication Helpers
-// ------------------------------------------------------------------------------
+// 2. JWT Generation Helpers
 function base64UrlEncode(str) {
     return Buffer.from(str)
         .toString('base64')
@@ -88,9 +82,12 @@ async function githubRequest(url, method = 'GET', token = null, body = null) {
     return res.json();
 }
 
-// ------------------------------------------------------------------------------
-// 3. Structured JSON Plan Parser (Reads tfplan.json directly)
-// ------------------------------------------------------------------------------
+// Helper: Strip ANSI escape color codes
+function stripAnsi(str) {
+    return str.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
+}
+
+// 3. JSON Plan Parser (Reads tfplan.json directly)
 function parseTerraformPlanJson(targetDir) {
     const jsonPath = path.join(targetDir, 'tfplan.json');
     if (!fs.existsSync(jsonPath)) {
@@ -105,7 +102,7 @@ function parseTerraformPlanJson(targetDir) {
     const resources = [];
 
     for (const rc of resourceChanges) {
-        const actions = rc.change.actions; // e.g. ["create"], ["delete", "create"], ["update"], ["delete"]
+        const actions = rc.change.actions;
         let actionLabel = '➕ CREATE';
 
         if (actions.includes('no-op') || actions.includes('read')) continue;
@@ -129,7 +126,6 @@ function parseTerraformPlanJson(targetDir) {
         const rName = (rc.change.after && rc.change.after.name) || rc.name || rc.address.split('.').pop();
         const after = rc.change.after || {};
 
-        // Extract high-value architectural details
         const details = [];
         if (after.ip_cidr_range) details.push(`CIDR: \`${after.ip_cidr_range}\``);
         if (after.region) details.push(`Region: \`${after.region}\``);
@@ -154,7 +150,6 @@ function parseTerraformPlanJson(targetDir) {
         });
     }
 
-    // Parse Output Changes
     const outputs = [];
     for (const [key, out] of Object.entries(outputChanges)) {
         const outActions = out.actions || [];
@@ -166,7 +161,6 @@ function parseTerraformPlanJson(targetDir) {
         if (out.after !== undefined && out.after !== null) {
             valStr = typeof out.after === 'object' ? JSON.stringify(out.after) : String(out.after);
         }
-
         outputs.push({ action: op, name: key, value: valStr });
     }
 
@@ -174,9 +168,7 @@ function parseTerraformPlanJson(targetDir) {
     return { planSummary, resources, outputs };
 }
 
-// ------------------------------------------------------------------------------
-// 4. Main Execution Function
-// ------------------------------------------------------------------------------
+// 4. Main Function
 async function main() {
     try {
         console.log('🔑 Authenticating GitHub App...');
@@ -189,7 +181,6 @@ async function main() {
             jwt
         );
 
-        console.log(`🎟️ Minting Installation Access Token (ID: ${installation.id})...`);
         const tokenData = await githubRequest(
             `https://api.github.com/app/installations/${installation.id}/access_tokens`,
             'POST',
@@ -197,7 +188,6 @@ async function main() {
         );
         const token = tokenData.token;
 
-        // Load Deployment Scope
         let scope = { environment: 'dev', targets: [] };
         if (fs.existsSync(DEPLOYMENT_SCOPE_FILE)) {
             scope = JSON.parse(fs.readFileSync(DEPLOYMENT_SCOPE_FILE, 'utf8'));
@@ -213,15 +203,19 @@ async function main() {
         let gitleaksBadge = '✅ PASSED';
 
         if (fs.existsSync('gitleaks_report.txt')) {
-            const glText = fs.readFileSync('gitleaks_report.txt', 'utf8');
-            if (/leaks found/i.test(glText)) {
-                gitleaksStatus = '⚠️ Secrets or sensitive patterns detected (review logs)';
+            const rawGl = stripAnsi(fs.readFileSync('gitleaks_report.txt', 'utf8'));
+            if (/leaks found/i.test(rawGl)) {
+                gitleaksStatus = '⚠️ Secrets detected (review logs)';
                 gitleaksBadge = '❌ FAILED';
-                gitleaksDetail = glText.split('\n').slice(0, 40).join('\n');
+                gitleaksDetail = rawGl.split('\n').slice(0, 40).join('\n').trim();
             } else {
-                const lines = glText.split('\n');
-                const sIdx = lines.findIndex(l => l.includes('gitleaks') || l.includes('commits scanned'));
-                gitleaksDetail = sIdx !== -1 ? lines.slice(Math.max(0, sIdx - 4), sIdx + 6).join('\n').trim() : glText.trim();
+                const glLines = rawGl.split('\n');
+                const leakIdx = glLines.findIndex(l => l.includes('gitleaks') || l.includes('commits scanned') || l.includes('no leaks found'));
+                if (leakIdx !== -1) {
+                    gitleaksDetail = glLines.slice(Math.max(0, leakIdx - 5), leakIdx + 5).join('\n').trim();
+                } else {
+                    gitleaksDetail = rawGl.trim() || 'No leaks found.';
+                }
             }
         }
 
@@ -233,19 +227,33 @@ async function main() {
         let trivyBadge = '✅ PASSED';
 
         if (fs.existsSync('trivy_report.txt')) {
-            const trText = fs.readFileSync('trivy_report.txt', 'utf8');
-            const critMatch = trText.match(/CRITICAL:\s*(\d+)/);
-            const highMatch = trText.match(/HIGH:\s*(\d+)/);
+            const rawTr = stripAnsi(fs.readFileSync('trivy_report.txt', 'utf8'));
+            const critMatch = rawTr.match(/CRITICAL:\s*(\d+)/);
+            const highMatch = rawTr.match(/HIGH:\s*(\d+)/);
             if ((critMatch && parseInt(critMatch[1]) > 0) || (highMatch && parseInt(highMatch[1]) > 0)) {
                 trivyStatus = `⚠️ Vulnerabilities found: CRITICAL ${critMatch ? critMatch[1] : 0}, HIGH ${highMatch ? highMatch[1] : 0}`;
                 trivyBadge = '⚠️ WARNING';
             }
-            const sumIdx = trText.indexOf('Report Summary');
-            trivyDetail = sumIdx !== -1 ? trText.substring(sumIdx, sumIdx + 800).split('\n\n')[0].trim() : trText.slice(-300);
+
+            // Extract Report Summary Table box
+            const boxStart = rawTr.indexOf('Report Summary');
+            if (boxStart !== -1) {
+                const boxSlice = rawTr.substring(boxStart);
+                const lines = boxSlice.split('\n');
+                // Capture up to Legend lines
+                const endLineIdx = lines.findIndex(l => l.includes('Clean (no security findings detected)'));
+                if (endLineIdx !== -1) {
+                    trivyDetail = lines.slice(0, endLineIdx + 1).join('\n').trim();
+                } else {
+                    trivyDetail = lines.slice(0, 15).join('\n').trim();
+                }
+            } else {
+                trivyDetail = rawTr.split('\n').slice(-15).join('\n').trim();
+            }
         }
 
         // --------------------------------------------------------------------------
-        // C. Parse Checkov
+        // C. Dynamic Checkov Parser
         // --------------------------------------------------------------------------
         let checkovStatus = '✅ Passed CIS Benchmarks';
         let checkovBadge = '✅ PASSED';
@@ -253,9 +261,9 @@ async function main() {
         let failedChecks = [];
 
         if (fs.existsSync('checkov_report.txt')) {
-            const ckText = fs.readFileSync('checkov_report.txt', 'utf8');
-            const passMatch = ckText.match(/Passed checks:\s*(\d+)/);
-            const failMatch = ckText.match(/Failed checks:\s*(\d+)/);
+            const rawCk = stripAnsi(fs.readFileSync('checkov_report.txt', 'utf8'));
+            const passMatch = rawCk.match(/Passed checks:\s*(\d+)/);
+            const failMatch = rawCk.match(/Failed checks:\s*(\d+)/);
             const pCount = passMatch ? parseInt(passMatch[1]) : 0;
             const fCount = failMatch ? parseInt(failMatch[1]) : 0;
 
@@ -267,19 +275,48 @@ async function main() {
                 checkovBadge = `✅ ${pCount} PASSED`;
             }
 
-            passedChecks.push({ id: 'CKV_GCP_74', desc: 'Ensure Private Google Access is enabled', resource: '1-network-infrastructure' });
-            passedChecks.push({ id: 'CKV_GCP_2', desc: 'Ensure firewall rule does not expose unrestricted ports to management plane', resource: '1-network-infrastructure' });
-            passedChecks.push({ id: 'CKV_GCP_18', desc: 'Ensure Cloud Router BGP configuration complies with autonomous system standards', resource: '1-network-infrastructure' });
+            // Parse individual check blocks
+            const checkLines = rawCk.split('\n');
+            for (let i = 0; i < checkLines.length; i++) {
+                const line = checkLines[i].trim();
+                if (line.startsWith('Check:')) {
+                    const match = line.match(/^Check:\s*([A-Z0-9_]+):\s*"([^"]+)"/);
+                    if (match) {
+                        const checkId = match[1];
+                        const checkDesc = match[2];
+                        let status = 'UNKNOWN';
+                        let resource = '';
+                        let file = '';
 
-            if (fCount > 0) {
-                failedChecks.push({ id: 'CKV_GCP_26', desc: 'Ensure VPC Flow Logs are enabled for subnets', resource: 'private-subnet-mumbai', fix: 'Add `subnet_flow_logs: true` under `subnets` in `environments/dev/network.yaml`' });
-                failedChecks.push({ id: 'CKV_GCP_26', desc: 'Ensure VPC Flow Logs are enabled for subnets', resource: 'private-subnet-singapore', fix: 'Add `subnet_flow_logs: true` under `subnets` in `environments/dev/network.yaml`' });
-                failedChecks.push({ id: 'CKV_GCP_27', desc: 'Ensure default internet gateway route is deleted', resource: 'platform-foundation-vpc-dev', fix: 'Set `delete_default_routes: true` under `vpc` in `environments/dev/network.yaml`' });
+                        for (let j = i + 1; j < Math.min(checkLines.length, i + 6); j++) {
+                            const sub = checkLines[j].trim();
+                            if (sub.startsWith('PASSED for resource:')) {
+                                status = 'PASSED';
+                                resource = sub.replace('PASSED for resource:', '').trim();
+                            } else if (sub.startsWith('FAILED for resource:')) {
+                                status = 'FAILED';
+                                resource = sub.replace('FAILED for resource:', '').trim();
+                            } else if (sub.startsWith('File:')) {
+                                file = sub.replace('File:', '').trim();
+                            }
+                        }
+
+                        if (status === 'PASSED') {
+                            passedChecks.push({ id: checkId, desc: checkDesc, resource: resource, file: file });
+                        } else if (status === 'FAILED') {
+                            let fix = 'Review CIS benchmark recommendation';
+                            if (checkId === 'CKV_TF_1') {
+                                fix = 'Supply chain policy: Replace `version = "~> ..."` with Git commit hash, or add `--skip-check CKV_TF_1` in CI';
+                            }
+                            failedChecks.push({ id: checkId, desc: checkDesc, resource: resource, file: file, fix: fix });
+                        }
+                    }
+                }
             }
         }
 
         // --------------------------------------------------------------------------
-        // D. Build Final Markdown Comment Body
+        // D. Build Final Markdown Comment
         // --------------------------------------------------------------------------
         let commentBody = `## 🤖 Terraform Plan & Compliance Audit Report\n\n`;
         commentBody += `| **Target Environment** | **Infrastructure Scope** | **Security Checks** | **Pipeline Status** |\n`;
@@ -309,22 +346,26 @@ async function main() {
         commentBody += `#### 3️⃣ Checkov (GCP CIS IaC Policies) — \`${checkovBadge}\`\n`;
         commentBody += `> **Summary**: Policy audit against GCP CIS Foundation Benchmarks detected ${failedChecks.length} configuration warnings.\n\n`;
         commentBody += `<details open>\n<summary><b>Click to View Detailed Checkov Audit & Remediation Guide</b></summary>\n\n`;
-        commentBody += `##### ✅ Passed Checks (${passedChecks.length})\n`;
-        passedChecks.forEach(c => {
-            commentBody += `* \`PASSED ${c.id}\`: "${c.desc}" (Target: \`${c.resource}\`)\n`;
-        });
-        commentBody += `\n`;
+
+        if (passedChecks.length > 0) {
+            commentBody += `##### ✅ Passed Checks (${passedChecks.length})\n`;
+            passedChecks.forEach(c => {
+                commentBody += `* \`PASSED ${c.id}\`: "${c.desc}" (Resource: \`${c.resource}\` in \`${c.file}\`)\n`;
+            });
+            commentBody += `\n`;
+        }
+
         if (failedChecks.length > 0) {
             commentBody += `##### ❌ Failed Checks & How to Fix (${failedChecks.length})\n\n`;
-            commentBody += `| Check ID | Policy Description | Impacted Resource | Recommended Fix |\n| :--- | :--- | :--- | :--- |\n`;
+            commentBody += `| Check ID | Policy Description | Impacted Resource | File | Recommended Fix |\n| :--- | :--- | :--- | :--- | :--- |\n`;
             failedChecks.forEach(f => {
-                commentBody += `| **\`${f.id}\`** | ${f.desc} | \`${f.resource}\` | ${f.fix} |\n`;
+                commentBody += `| **\`${f.id}\`** | ${f.desc} | \`${f.resource}\` | \`${f.file}\` | ${f.fix} |\n`;
             });
             commentBody += `\n`;
         }
         commentBody += `</details>\n\n---\n\n`;
 
-        // 5. Summarized Terraform Plan Section (from tfplan.json)
+        // 5. Summarized Terraform Plan Section
         commentBody += `### 📋 Infrastructure Execution Plan\n`;
 
         for (const target of scope.targets) {

@@ -74,7 +74,7 @@ steps:
       - '-c'
       - |
         echo "-------------------------------------------------------------------------------------------------------"
-        gitleaks detect --source=. --verbose --redact | tee gitleaks_report.txt || true
+        gitleaks detect --source=. --verbose --redact 2>&1 | tee gitleaks_report.txt || true
         echo "-------------------------------------------------------------------------------------------------------"
 
 
@@ -88,7 +88,7 @@ steps:
       - '-c'
       - |
         echo "-------------------------------------------------------------------------------------------------------"
-        trivy fs --scanners vuln,misconfig --severity HIGH,CRITICAL . | tee trivy_report.txt || true
+        trivy fs --scanners vuln,misconfig --severity HIGH,CRITICAL --color never --no-progress . 2>&1 | tee trivy_report.txt || true
         echo "-------------------------------------------------------------------------------------------------------"
 
 
@@ -186,7 +186,7 @@ steps:
   
           terraform -chdir="$$DIR" init -backend-config="bucket=${_STATE_BUCKET}" -backend-config="prefix=$${ENV}/$${NAME}"
           terraform -chdir="$$DIR" plan -var="environment=$$ENV" -out="tfplan.binary" -input=false
-          
+
           echo "....................................................................................."
           
           echo "📄 Rendering human-readable plan in JSON Format for PR review..."
