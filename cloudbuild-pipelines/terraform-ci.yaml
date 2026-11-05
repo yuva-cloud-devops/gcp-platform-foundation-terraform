@@ -16,6 +16,7 @@ steps:
         apt-get update && apt-get install -y jq curl git
         chmod +x cloudbuild-pipelines/scripts/*.sh
         
+        echo "-------------------------------------------------------------------------------------------------------"
         echo "🔍 Fetching PR #${_PR_NUMBER} details from GitHub API..."
         
         PR_API_URL="https://api.github.com/repos/${_REPO_OWNER}/${_REPO_NAME}/pulls/${_PR_NUMBER}"
@@ -29,11 +30,16 @@ steps:
           echo "  environment: dev" >> pr_body.txt
         fi
         
+        echo "-------------------------------------------------------------------------------------------------------"
         echo "📄 PR Deployment Request Content:"
         cat pr_body.txt
         echo ""
         
+        echo "-------------------------------------------------------------------------------------------------------"
         ./cloudbuild-pipelines/scripts/validate-request.sh pr_body.txt
+        echo "-------------------------------------------------------------------------------------------------------"
+
+
 
   # ----------------------------------------------------------------------------
   # Step 2: Validate Target YAML Configurations
@@ -44,14 +50,19 @@ steps:
     args:
       - '-c'
       - |
+        echo "-------------------------------------------------------------------------------------------------------"
         apt-get update && apt-get install -y jq
         chmod +x cloudbuild-pipelines/scripts/*.sh
         TARGET_COUNT=$$(jq '.targets | length' deployment_scope.json)
         
+        echo "-------------------------------------------------------------------------------------------------------"
         for i in $$(seq 0 $$((TARGET_COUNT - 1))); do
           CONFIG_PATH=$$(jq -r ".targets[$$i].config" deployment_scope.json)
           ./cloudbuild-pipelines/scripts/validate-config.sh "$$CONFIG_PATH"
+          echo "...................................................................................................."
         done
+        echo "-------------------------------------------------------------------------------------------------------"
+
 
   # ----------------------------------------------------------------------------
   # Step 3: Secret Detection (Gitleaks)
@@ -62,7 +73,10 @@ steps:
     args:
       - '-c'
       - |
-        gitleaks detect --source=. --verbose --redact | tee gitleaks_report.txt || true
+        echo "-------------------------------------------------------------------------------------------------------"
+        gitleaks detect --source=. --verbose --redact 2>&1 | tee gitleaks_report.txt || true
+        echo "-------------------------------------------------------------------------------------------------------"
+
 
   # ----------------------------------------------------------------------------
   # Step 4: Vulnerability & Misconfiguration Scan (Trivy)
@@ -73,7 +87,10 @@ steps:
     args:
       - '-c'
       - |
-        trivy fs --scanners vuln,misconfig --severity HIGH,CRITICAL . | tee trivy_report.txt || true
+        echo "-------------------------------------------------------------------------------------------------------"
+        trivy fs --scanners vuln,misconfig --severity HIGH,CRITICAL --no-progress . 2>&1 | tee trivy_report.txt || true
+        echo "-------------------------------------------------------------------------------------------------------"
+
 
   # ----------------------------------------------------------------------------
   # Step 5: Terraform Format Check, Init & Validate
@@ -88,25 +105,36 @@ steps:
         ENV=$$(jq -r '.environment' deployment_scope.json)
         TARGET_COUNT=$$(jq '.targets | length' deployment_scope.json)
 
+        echo "-------------------------------------------------------------------------------------------------------"
         for i in $$(seq 0 $$((TARGET_COUNT - 1))); do
           DIR=$$(jq -r ".targets[$$i].dir" deployment_scope.json)
           NAME=$$(jq -r ".targets[$$i].name" deployment_scope.json)
           
-          echo "=========================================================="
+          echo "====================================================================================="
           echo "🚀 Validating: $$NAME in $$DIR (Env: $$ENV)"
-          echo "=========================================================="
+          echo "====================================================================================="
           
           echo "1. Format Check..."
           terraform -chdir="$$DIR" fmt -check
+          echo "....................................................................................."
+
+          echo "2. Initializing remote state prefix: $${ENV}/$${NAME}..."
           
-          echo "2. Initializing remote state prefix: remote-state-management/$${ENV}/$${NAME}..."
-          terraform -chdir="$$DIR" init \
-            -backend-config="bucket=${_STATE_BUCKET}" \
-            -backend-config="prefix=remote-state-management/$${ENV}/$${NAME}"
-          
+          echo "bucket = \"${_STATE_BUCKET}\"" > "$$DIR/$${NAME}-$${ENV}-backend.hcl"
+          echo "prefix = \"$$ENV/$$NAME\"" >> "$$DIR/$${NAME}-$${ENV}-backend.hcl"
+
+          echo "📄 Generated $$DIR/$${NAME}-$${ENV}-backend.hcl:"
+          cat "$$DIR/$${NAME}-$${ENV}-backend.hcl"
+
+          terraform -chdir="$$DIR" init -backend-config="$${NAME}-$${ENV}-backend.hcl" -input=false
+          echo "....................................................................................."
+
           echo "3. Validating Terraform code..."
           terraform -chdir="$$DIR" validate
+          echo "....................................................................................."
         done
+        echo "-------------------------------------------------------------------------------------------------------"
+
 
   # ----------------------------------------------------------------------------
   # Step 6: IaC Compliance & Security Scan (Checkov)
@@ -125,11 +153,18 @@ steps:
             with open('checkov_report.txt', 'w') as out:
                 for t in targets:
                     target_dir = t['dir']
+                    print("\n----------------------------------------------------------------------------------------\n")
                     print("🛡️ Scanning " + str(target_dir) + " with Checkov...")
                     cmd = ['checkov', '-d', target_dir, '--framework', 'terraform', '--soft-fail-on', 'LOW,MEDIUM']
                     res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
                     out.write(res.stdout)
                     print("Checkov finished scanning " + str(target_dir))
+                print("\n----------------------------------------------------------------------------------------\n")
+            print("\n==================================== CHECKOV REPORT ====================================\n")
+            with open('checkov_report.txt', 'r') as report:
+                print(report.read())
+            print("\n==================================== END OF REPORT =====================================\n")
+
 
   # ----------------------------------------------------------------------------
   # Step 7: Terraform Plan Generation & Human-Readable Output
@@ -143,20 +178,34 @@ steps:
         apk add --no-cache jq bash
         ENV=$$(jq -r '.environment' deployment_scope.json)
         TARGET_COUNT=$$(jq '.targets | length' deployment_scope.json)
-
+        
+        echo "-------------------------------------------------------------------------------------------------------"
         for i in $$(seq 0 $$((TARGET_COUNT - 1))); do
           DIR=$$(jq -r ".targets[$$i].dir" deployment_scope.json)
           NAME=$$(jq -r ".targets[$$i].name" deployment_scope.json)
+         
+          echo "....................................................................................."
+          echo "=========================================================="
+          echo "📋 Planning: $$NAME in $$DIR (Env: $$ENV)"
+          echo "=========================================================="
+
+          echo "📄 Generated $$DIR/$${NAME}-$${ENV}-backend.hcl:"
+          cat "$$DIR/$${NAME}-$${ENV}-backend.hcl"
+
+          terraform -chdir="$$DIR" init -backend-config="$${NAME}-$${ENV}-backend.hcl" -input=false
+          terraform -chdir="$$DIR" plan -var="environment=$$ENV" -out="tfplan.binary" -input=false
+
+          echo "....................................................................................."
           
-          echo "📝 Generating binary plan for $$NAME..."
-          terraform -chdir="$$DIR" plan -var="environment=$$ENV" -out="tfplan.binary" -no-color
-          
-          echo "📄 Rendering human-readable plan for PR review..."
-          terraform -chdir="$$DIR" show -no-color tfplan.binary > "$$DIR/plan_readable.txt"
+          echo "📄 Rendering human-readable plan in JSON Format for PR review..."
+          terraform -chdir="$$DIR" show -json tfplan.binary > "$$DIR/tfplan.json"
+          echo "....................................................................................."
         done
+        echo "-------------------------------------------------------------------------------------------------------"
+
 
   # ----------------------------------------------------------------------------
-  # Step 8: Store Approved Binary Plan in GCS Plan Bucket
+  # Step 8: Store Approved tfPlan.json in GCS Plan Bucket
   # ----------------------------------------------------------------------------
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
     id: 'upload-plan-to-gcs'
@@ -168,41 +217,44 @@ steps:
         ENV=$$(jq -r '.environment' deployment_scope.json)
         TARGET_COUNT=$$(jq '.targets | length' deployment_scope.json)
 
+        echo "-------------------------------------------------------------------------------------------------------"
         for i in $$(seq 0 $$((TARGET_COUNT - 1))); do
           DIR=$$(jq -r ".targets[$$i].dir" deployment_scope.json)
           NAME=$$(jq -r ".targets[$$i].name" deployment_scope.json)
           
-          if [ -f "$$DIR/tfplan.binary" ]; then
-            DEST="gs://${_PLAN_BUCKET}/tf-plan-review/${_PR_NUMBER}/${SHORT_SHA}/$${NAME}-$${ENV}.tfplan"
-            echo "📦 Uploading binary plan to: $$DEST"
-            gsutil cp "$$DIR/tfplan.binary" "$$DEST"
+          if [ -f "$$DIR/tfplan.json" ]; then
+            echo "....................................................................................."
+            DEST="gs://${_PLAN_BUCKET}/tf-plan-review/${_PR_NUMBER}/${SHORT_SHA}/$${NAME}-$${ENV}-tfplan.json"
+            echo "📦 Uploading tf plan json to: $$DEST"
+            gsutil cp "$$DIR/tfplan.json" "$$DEST"
+            echo "....................................................................................."
           fi
         done
+        echo "-------------------------------------------------------------------------------------------------------"
 
   # ----------------------------------------------------------------------------
-  # Step 9: Post Formatted Plan Review Report to GitHub PR (Via Secret Manager)
+  # Step 9: Post Formatted Plan Review Report to GitHub PR (Via GitHub App Bot)
   # ----------------------------------------------------------------------------
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
-    id: 'post-pr-comment'
-    entrypoint: 'bash'
-    secretEnv: ['GITHUB_PAT']
+  - name: 'node:20-alpine'
+    id: 'post-pr-comment-bot'
+    entrypoint: 'node'
+    secretEnv: ['GITHUB_APP_PRIVATE_KEY']
+    env:
+      - 'GITHUB_APP_ID=${_GITHUB_APP_ID}'
+      - 'PR_NUMBER=${_PR_NUMBER}'
+      - 'REPO_OWNER=${_REPO_OWNER}'
+      - 'REPO_NAME=${_REPO_NAME}'
+      - 'SHORT_SHA=${SHORT_SHA}'
+      - 'DEPLOYMENT_SCOPE=deployment_scope.json'
     args:
-      - '-c'
-      - |
-        apt-get update && apt-get install -y jq curl
-        chmod +x cloudbuild-pipelines/scripts/*.sh
-        ./cloudbuild-pipelines/scripts/post-pr-comment.sh \
-          "${_PR_NUMBER}" \
-          "${_REPO_OWNER}" \
-          "${_REPO_NAME}" \
-          "$$GITHUB_PAT" \
-          "deployment_scope.json"
+      - 'cloudbuild-pipelines/scripts/bot.js'
 
-# Injects the secret securely without exposing it in plaintext substitutions
+
+# Injects the GitHub App Private Key securely from Secret Manager
 availableSecrets:
   secretManager:
-    - versionName: projects/$PROJECT_ID/secrets/github-pr-token/versions/latest
-      env: 'GITHUB_PAT'
+    - versionName: projects/$PROJECT_ID/secrets/github-app-private-key/versions/latest
+      env: 'GITHUB_APP_PRIVATE_KEY'
 
 substitutions:
   _REPO_OWNER: 'yuva-cloud-devops'
@@ -210,6 +262,7 @@ substitutions:
   _PR_NUMBER: '1'
   _STATE_BUCKET: 'gcp-remote-backend-tfstate-management-bucket'
   _PLAN_BUCKET: 'gcp-tfplans-instancetemplate-strorage-bucket'
+  _GITHUB_APP_ID: '5622633' # <-- Put your GitHub App ID here
 
 options:
   logging: CLOUD_LOGGING_ONLY

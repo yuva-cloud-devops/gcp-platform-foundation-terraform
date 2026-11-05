@@ -88,4 +88,7 @@
 
 
 
-environment = "dev"
+# environment = "dev"
+# terraform init -backend-config="backend.hcl" -reconfigure
+# terraform plan -var="environment=dev"
+# terraform apply -var="environment=dev"
