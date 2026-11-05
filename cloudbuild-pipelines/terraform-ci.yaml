@@ -88,7 +88,7 @@ steps:
       - '-c'
       - |
         echo "-------------------------------------------------------------------------------------------------------"
-        trivy fs --scanners vuln,misconfig --severity HIGH,CRITICAL --color never --no-progress . 2>&1 | tee trivy_report.txt || true
+        trivy fs --scanners vuln,misconfig --severity HIGH,CRITICAL --no-progress . 2>&1 | tee trivy_report.txt || true
         echo "-------------------------------------------------------------------------------------------------------"
 
 
