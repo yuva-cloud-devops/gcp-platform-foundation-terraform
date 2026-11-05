@@ -107,6 +107,8 @@ cloudbuild:
         branch: "^main$"
       substitutions:
         _AUTO_APPROVE: "true"
+        _REPO_OWNER: "yuva-cloud-devops"
+        _GITHUB_APP_ID: "5622633"
 
 
 secrets:

@@ -119,9 +119,16 @@ steps:
           echo "....................................................................................."
 
           echo "2. Initializing remote state prefix: $${ENV}/$${NAME}..."
-          terraform -chdir="$$DIR" init \
-            -backend-config="bucket=${_STATE_BUCKET}" \
-            -backend-config="prefix=$${ENV}/$${NAME}"
+          
+          cat <<EOF > "$$DIR/$${NAME}-$${ENV}-backend.hcl"
+          bucket = "${_STATE_BUCKET}"
+          prefix = "$${ENV}/$${NAME}"
+          EOF
+
+          echo "📄 Generated $$DIR/$${NAME}-$${ENV}-backend.hcl:"
+          cat "$$DIR/$${NAME}-$${ENV}-backend.hcl"
+
+          terraform -chdir="$$DIR" init -backend-config="$${NAME}-$${ENV}-backend.hcl" -input=false
           echo "....................................................................................."
 
           echo "3. Validating Terraform code..."
@@ -183,8 +190,16 @@ steps:
           echo "=========================================================="
           echo "📋 Planning: $$NAME in $$DIR (Env: $$ENV)"
           echo "=========================================================="
-  
-          terraform -chdir="$$DIR" init -backend-config="bucket=${_STATE_BUCKET}" -backend-config="prefix=$${ENV}/$${NAME}"
+
+          cat <<EOF > "$$DIR/$${NAME}-$${ENV}-backend.hcl"
+          bucket = "${_STATE_BUCKET}"
+          prefix = "$${ENV}/$${NAME}"
+          EOF
+
+          echo "📄 Generated $$DIR/$${NAME}-$${ENV}-backend.hcl:"
+          cat "$$DIR/$${NAME}-$${ENV}-backend.hcl"
+
+          terraform -chdir="$$DIR" init -backend-config="$${NAME}-$${ENV}-backend.hcl" -input=false
           terraform -chdir="$$DIR" plan -var="environment=$$ENV" -out="tfplan.binary" -input=false
 
           echo "....................................................................................."
@@ -197,7 +212,7 @@ steps:
 
 
   # ----------------------------------------------------------------------------
-  # Step 8: Store Approved Binary Plan in GCS Plan Bucket
+  # Step 8: Store Approved tfPlan.json in GCS Plan Bucket
   # ----------------------------------------------------------------------------
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
     id: 'upload-plan-to-gcs'
@@ -214,11 +229,11 @@ steps:
           DIR=$$(jq -r ".targets[$$i].dir" deployment_scope.json)
           NAME=$$(jq -r ".targets[$$i].name" deployment_scope.json)
           
-          if [ -f "$$DIR/tfplan.binary" ]; then
+          if [ -f "$$DIR/tfplan.json" ]; then
             echo "....................................................................................."
-            DEST="gs://${_PLAN_BUCKET}/tf-plan-review/${_PR_NUMBER}/${SHORT_SHA}/$${NAME}-$${ENV}.tfplan"
-            echo "📦 Uploading binary plan to: $$DEST"
-            gsutil cp "$$DIR/tfplan.binary" "$$DEST"
+            DEST="gs://${_PLAN_BUCKET}/tf-plan-review/${_PR_NUMBER}/${SHORT_SHA}/$${NAME}-$${ENV}-tfplan.json"
+            echo "📦 Uploading tf plan json to: $$DEST"
+            gsutil cp "$$DIR/tfplan.json" "$$DEST"
             echo "....................................................................................."
           fi
         done
