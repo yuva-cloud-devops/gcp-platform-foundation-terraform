@@ -1,12 +1,12 @@
-# GCP Platform Foundation - Bootstrap Infrastructure (Tier 0)
+# 🚀 GCP Platform Foundation - Bootstrap Infrastructure (Layer 0)
 
-This directory contains the Terraform configuration for provisioning the **Bootstrap Infrastructure (Tier 0)** on **Google Cloud Platform (GCP)**. 
+This directory contains the Terraform configuration for provisioning the **Bootstrap Foundation (Layer 0)** on **Google Cloud Platform (GCP)**. 
 
-The bootstrap layer sets up the core foundation required to run secure, automated CI/CD pipelines (such as Cloud Build) and remote Terraform state management for subsequent platform layers (`1-network-infrastructure`, compute, security, etc.).
+The bootstrap layer establishes the core foundational prerequisites required to run automated, secure Cloud Build CI/CD pipelines, remote Terraform state locking, and project-level API enablement for all subsequent platform layers (`1-network-infrastructure`, `2-security-infrastructure`, `3-compute-infrastructure`, `4-availability-infrastructure`).
 
 ---
 
-## Table of Contents
+## 📑 Table of Contents
 
 - [Overview](#overview)
 - [Architecture & Workflow](#architecture--workflow)
@@ -29,18 +29,18 @@ The bootstrap layer sets up the core foundation required to run secure, automate
 
 ---
 
-## Overview
+## 🏛️ Overview
 
-The bootstrap tier establishes foundational prerequisites before provisioning network or compute resources:
-- **Centralized API Enablement**: Ensures all required GCP APIs are active and prevents race conditions with dependency chaining (`depends_on`).
-- **Remote State & Plan Storage**: Provisions versioned GCS buckets for Terraform state locking/storage and plan reviews with automated lifecycle expiration.
-- **Dedicated CI/CD Identity**: Creates a dedicated service account (`sa-cloudbuild-terraform`) with fine-grained, tier-specific IAM roles instead of using overly permissive project-wide editor/owner roles.
+The bootstrap tier establishes foundational prerequisites before provisioning network, security, compute, or load balancing resources:
+- **Centralized API Enablement**: Ensures all required GCP service APIs are activated idempotently and prevents race conditions with dependency chaining (`depends_on`).
+- **Remote State & Plan Storage**: Provisions versioned GCS buckets for Terraform remote state locking and temporary plan reviews with automated lifecycle expiration.
+- **Dedicated CI/CD Identity**: Creates a dedicated service account (`sa-cloudbuild-terraform`) with fine-grained, platform-specific IAM roles instead of using overly permissive project-wide editor/owner roles.
 - **Service Account Impersonation**: Sets up IAM bindings allowing Cloud Build's default service agent to impersonate the dedicated Terraform executor service account.
-- **Schema-Validated Config-as-Data**: Decouples project configuration into a readable `bootstrap.yaml` strictly validated by a draft-07 JSON Schema.
+- **Schema-Validated Config-as-Data**: Decouples project configuration into a readable `bootstrap.yaml` strictly validated by a Draft-07 JSON Schema.
 
 ---
 
-## Architecture & Workflow
+## 📐 Architecture & Workflow
 
 ```mermaid
 flowchart TD
@@ -52,7 +52,7 @@ flowchart TD
         Step1 --> Step2["2. GCS Storage Buckets<br/>(google_storage_bucket.buckets)"]
         Step1 --> Step3["3. Cloud Build Service Account<br/>(google_service_account.cloudbuild_sa)"]
         
-        Step2 --> GCS1["State Bucket (Versioning Enabled, force_destroy: false)"]
+        Step2 --> GCS1["State Bucket (Versioning: true, force_destroy: false)"]
         Step2 --> GCS2["Plan Bucket (14-Day Lifecycle, force_destroy: true)"]
         
         Step3 --> Step4["4. Assign Scoped IAM Roles<br/>(google_project_iam_member.cloudbuild_sa_roles)"]
@@ -62,77 +62,56 @@ flowchart TD
 
 ---
 
-## Directory Structure
+## 📁 Directory Structure
 
 ```text
-gcp-platform-foundation-terraform/
-├── environments/
-│   ├── bootstrap.yaml               # Bootstrap configuration parameters
-│   └── dev/
-│       └── network.yaml             # Tier 1 Network configuration
-├── schemas/
-│   └── bootstrap.schema.json        # JSON Schema validating bootstrap.yaml
-└── 0-bootstrap-infrastructure/
-    ├── locals.tf                    # Loads bootstrap.yaml and prepares locals
-    ├── main.tf                      # Terraform resources (APIs, Buckets, SA, IAM)
-    ├── outputs.tf                   # Exported bucket names and SA email
-    ├── README.md                    # Bootstrap documentation
-    └── variables.tf                 # Variable definitions (config_path)
+0-bootstrap-infrastructure/
+├── backend.hcl                  # Backend configuration for bootstrap state
+├── locals.tf                    # Loads bootstrap.yaml, parses APIs, buckets, and roles
+├── main.tf                      # Terraform resources (APIs, GCS Buckets, SA, IAM bindings)
+├── outputs.tf                   # Exported bucket names and SA email
+├── provider.tf                  # Google provider configuration (~> 6.0)
+├── README.md                    # Layer 0 documentation
+├── terraform.tfvars             # Local variable assignments
+└── variables.tf                 # Variable declarations (config_path)
 ```
 
 ---
 
-## Core Infrastructure Components
+## 🧩 Core Infrastructure Components
 
 ### 1. Dynamic API Enablement (`google_project_service`)
 Iterates over `local.apis` with `for_each` to activate the required GCP service APIs:
 - **Core & Management**: `cloudresourcemanager.googleapis.com`, `serviceusage.googleapis.com`, `iam.googleapis.com`, `logging.googleapis.com`.
-- **CI/CD & Storage**: `cloudbuild.googleapis.com`, `storage.googleapis.com`.
+- **CI/CD & Storage**: `cloudbuild.googleapis.com`, `storage.googleapis.com`, `secretmanager.googleapis.com`.
 - **Networking & Compute**: `compute.googleapis.com`, `networkmanagement.googleapis.com`, `servicenetworking.googleapis.com`.
 - **Security & Access**: `iap.googleapis.com`.
 
 ### 2. Unified GCS Storage Buckets (`google_storage_bucket`)
-A single `google_storage_bucket.buckets` resource leverages `for_each` and dynamic blocks to manage both state and plan review buckets:
-- **`state_bucket`**:
-  - Purpose: Remote Terraform backend state storage.
+Manages both state and ephemeral plan review storage buckets:
+- **`state_bucket` (`gcp-remote-backend-tfstate-management-bucket`)**:
+  - Purpose: Remote Terraform backend state storage across all layers and environments.
   - Settings: `versioning { enabled = true }`, `force_destroy = false`, `uniform_bucket_level_access = true`.
-- **`plan_bucket`**:
-  - Purpose: Ephemeral Terraform binary plan files storage for pull request reviews.
-  - Settings: `lifecycle_rule { condition { age = 14 } action { type = "Delete" } }`, `force_destroy = true`.
+- **`plan_bucket` (`gcp-tfplans-instancetemplate-strorage-bucket`)**:
+  - Purpose: Ephemeral Terraform binary plan files and plan JSON outputs for PR reviews.
+  - Settings: `lifecycle_rule { age = 14 }`, `force_destroy = true`, `uniform_bucket_level_access = true`.
 
 ### 3. Dedicated CI/CD Service Account (`google_service_account`)
-Creates `sa-cloudbuild-terraform` as the dedicated pipeline executor identity.
+Creates `sa-cloudbuild-terraform@<project-id>.iam.gserviceaccount.com` to isolate automated execution from personal developer credentials.
 
 ### 4. Granular IAM Roles Assignment (`google_project_iam_member`)
-Dynamically assigns scoped IAM roles across platform tiers using `for_each`:
-- **Storage**: `roles/storage.objectAdmin`
-- **Logging & Pipelines**: `roles/logging.logWriter`
-- **Tier 1 - Network Infrastructure**: `roles/compute.networkAdmin`
-- **Tier 2 - Compute Infrastructure**: `roles/compute.instanceAdmin.v1`, `roles/iam.serviceAccountUser`
-- **Tier 3 - Security & Cloud Armor**: `roles/compute.securityAdmin`
-- **Tier 4 - Availability & Load Balancing**: `roles/compute.loadBalancerAdmin`
-- **Inspection**: `roles/viewer`
-
-### 5. Cloud Build Impersonation (`google_service_account_iam_member`)
-Grants `roles/iam.serviceAccountUser` to the default Cloud Build Service Account (`<PROJECT_NUMBER>@cloudbuild.gserviceaccount.com`), allowing Cloud Build triggers to impersonate `sa-cloudbuild-terraform`.
+Grants specific roles required across the 4 platform layers:
+- `roles/storage.objectAdmin`: Read/write access to state and plan buckets.
+- `roles/logging.logWriter`: Cloud Build execution logs.
+- `roles/compute.networkAdmin`: Layer 1 VPC, subnets, routers, NATs, firewall rules.
+- `roles/iam.serviceAccountAdmin` & `roles/resourcemanager.projectIamAdmin`: Layer 2 Service Account creation and role bindings.
+- `roles/compute.instanceAdmin.v1` & `roles/iam.serviceAccountUser`: Layer 3 Instance Templates and Managed Instance Groups.
+- `roles/compute.securityAdmin` & `roles/compute.loadBalancerAdmin`: Layer 4 Cloud Armor and Application Load Balancer.
+- `roles/secretmanager.secretAccessor`: Accessing GitHub App secrets.
 
 ---
 
-## Schema & YAML Configuration
-
-### JSON Schema Specification (`schemas/bootstrap.schema.json`)
-
-The YAML configuration is strictly enforced using Draft-07 JSON Schema.
-
-| Property | Type | Required | Description |
-| :--- | :--- | :---: | :--- |
-| `project_id` | `string` | Yes | Target GCP Project ID (min length: 4). |
-| `region` | `string` | Yes | Default GCP Region (e.g. `asia-south1`). |
-| `gcs_location` | `string` | Yes | Regional/Multi-regional location for GCS buckets (e.g. `ASIA-SOUTH1`). |
-| `apis` | `array(string)` | Yes | List of GCP Service APIs to enable. |
-| `buckets.state_bucket` | `object` | Yes | State bucket settings (`name`, `versioning`, `uniform_bucket_level_access`, `force_destroy`). |
-| `buckets.plan_bucket` | `object` | Yes | Plan bucket settings (`name`, `lifecycle_days`, `uniform_bucket_level_access`, `force_destroy`). |
-| `service_account` | `object` | Yes | Service Account configuration (`name`, `display_name`, `description`, `roles`). |
+## 📄 Schema & YAML Configuration
 
 ### YAML Configuration (`environments/bootstrap.yaml`)
 
@@ -141,29 +120,19 @@ project_id: yuvaraj-internal-project
 region: asia-south1
 gcs_location: ASIA-SOUTH1
 
-# -----------------------------------------------------------------------------
-# Google Cloud APIs to Enable
-# -----------------------------------------------------------------------------
 apis:
-  # Core & CI/CD
   - cloudbuild.googleapis.com
   - storage.googleapis.com
   - cloudresourcemanager.googleapis.com
   - iam.googleapis.com
   - logging.googleapis.com
   - serviceusage.googleapis.com
-
-  # Networking & Connectivity
   - compute.googleapis.com
   - networkmanagement.googleapis.com
   - servicenetworking.googleapis.com
-
-  # Security & Availability (Cloud Armor & Load Balancing)
   - iap.googleapis.com
+  - secretmanager.googleapis.com
 
-# -----------------------------------------------------------------------------
-# GCS Storage Buckets Configuration
-# -----------------------------------------------------------------------------
 buckets:
   state_bucket:
     name: gcp-remote-backend-tfstate-management-bucket
@@ -178,41 +147,27 @@ buckets:
     uniform_bucket_level_access: true
     lifecycle_days: 14
 
-# -----------------------------------------------------------------------------
-# Dedicated Cloud Build Service Account & IAM Roles
-# -----------------------------------------------------------------------------
 service_account:
   name: sa-cloudbuild-terraform
   display_name: "Terraform Cloud Build Executor SA"
   description: "Dedicated service account for running Terraform CI/CD pipelines"
-  
   roles:
-    # Storage Access
     - roles/storage.objectAdmin
-
-    # Pipeline & Logging
     - roles/logging.logWriter
-
-    # 1-Network Infrastructure (VPC, Subnets, Routers, NATs, Firewall)
+    - roles/iam.serviceAccountAdmin
+    - roles/resourcemanager.projectIamAdmin
     - roles/compute.networkAdmin
-
-    # 2-Compute Infrastructure (VMs, Disks, Instance Groups)
     - roles/compute.instanceAdmin.v1
     - roles/iam.serviceAccountUser
-
-    # 3-Security & Cloud Armor (Security Policies, Firewall Admin)
     - roles/compute.securityAdmin
-
-    # 4-Availability & Load Balancing (Backend Services, URL Maps, Health Checks)
     - roles/compute.loadBalancerAdmin
-
-    # Inspection
+    - roles/secretmanager.secretAccessor
     - roles/viewer
 ```
 
 ---
 
-## Terraform Specifications
+## ⚙️ Terraform Specifications
 
 ### Requirements & Providers
 
@@ -225,7 +180,7 @@ service_account:
 
 | Variable | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `config_path` | `string` | `"../environments/bootstrap.yaml"` | Relative or absolute path to the YAML configuration file. |
+| `config_path` | `string` | `"../environments/bootstrap.yaml"` | Path to the bootstrap YAML configuration file. |
 
 ### Outputs
 
@@ -237,10 +192,10 @@ service_account:
 
 ---
 
-## Deployment Guide
+## 🚀 Deployment Guide
 
 ### 1. Authenticate with Google Cloud
-Ensure your local identity has permission to enable APIs, create service accounts, and assign project IAM roles (e.g., `roles/owner` or `roles/resourcemanager.projectIamAdmin` + `roles/iam.serviceAccountAdmin`):
+Ensure your local identity has administrative permissions to enable APIs and assign project IAM roles:
 
 ```bash
 gcloud auth login
@@ -248,47 +203,37 @@ gcloud auth application-default login
 ```
 
 ### 2. Initialize and Validate
-Navigate to `0-bootstrap-infrastructure`:
-
 ```bash
 cd 0-bootstrap-infrastructure
 
 # Initialize Terraform providers
 terraform init
 
-# Check syntax and formatting
+# Validate syntax
 terraform fmt -check
 terraform validate
 ```
 
 ### 3. Review Plan and Apply
 ```bash
-# Preview actions
 terraform plan
-
-# Apply infrastructure changes
 terraform apply
 ```
 
-### 4. Transitioning to Remote Backend
-Once the state bucket (`terraform_state_bucket`) is created by Tier 0, downstream tiers (like `1-network-infrastructure`) can configure their `backend "gcs"` block:
+### 4. Transitioning Downstream Layers to Remote State
+Once the state bucket is created, all downstream layers (`1-network`, `2-security`, `3-compute`, `4-availability`) reference the created bucket via `backend.hcl`:
 
 ```hcl
-terraform {
-  backend "gcs" {
-    bucket = "gcp-remote-backend-tfstate-management-bucket"
-    prefix = "network/dev"
-  }
-}
+bucket = "gcp-remote-backend-tfstate-management-bucket"
+prefix = "<layer>/<env>"
 ```
 
 ---
 
-## Security & Operational Best Practices
+## 🛡️ Security & Operational Best Practices
 
-1. **State Bucket Protection**: `force_destroy` is explicitly set to `false` and `versioning` is set to `true` on `state_bucket` to prevent accidental deletion and retain historical state snapshots.
-2. **Plan File Ephemerality**: `plan_bucket` automatically prunes old plan files after 14 days via GCS lifecycle rules.
-3. **Uniform Bucket-Level Access (UBLA)**: Enabled on all buckets to enforce centralized IAM access and disable legacy per-object ACLs.
-4. **Least-Privilege CI/CD**: Avoid using broad project-level `Owner`/`Editor` roles in CI/CD. The bootstrap service account only receives permissions mapped directly to the active infrastructure tiers.
-5. **No API Disable On Destroy**: `disable_on_destroy = false` prevents service disruptions on dependent cloud resources during teardown operations.
-
+1. **State Bucket Deletion Protection**: `force_destroy` is set to `false` and `versioning` is set to `true` on the state bucket to retain historical snapshots and prevent catastrophic data loss.
+2. **Ephemeral Plan Files**: The plan review bucket prunes files older than 14 days via native GCS lifecycle management.
+3. **Uniform Bucket-Level Access (UBLA)**: Enforces centralized IAM access across all buckets.
+4. **Least-Privilege CI/CD**: Only the specific IAM roles required for platform management are bound to `sa-cloudbuild-terraform`.
+5. **Idempotent API Enablement**: `disable_on_destroy = false` prevents service disruptions on active cloud infrastructure during teardown.

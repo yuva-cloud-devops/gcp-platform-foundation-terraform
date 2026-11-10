@@ -6,9 +6,10 @@ module "load_balancer" {
   source  = "terraform-google-modules/lb-http/google"
   version = "~> 12.0"
 
-  project = local.project_id
-  name    = local.lb.name
-  labels  = local.lb.labels
+  project               = local.project_id
+  name                  = local.lb.name
+  load_balancing_scheme = local.lb.load_balancing_scheme
+  labels                = local.lb.labels
 
   # External Static IP & Protocol Forwarding
   create_address = local.lb.create_address

@@ -36,10 +36,10 @@ locals {
       group                        = local.remote_mig_groups[mig_key]
       description                  = "Regional MIG Backend: ${mig_key}-${var.environment}"
       balancing_mode               = try(local.lb_raw.backend.balancing_mode, "UTILIZATION")
-      max_utilization              = try(local.lb_raw.backend.max_utilization, 0.8)
+      max_utilization              = try(local.lb_raw.backend.balancing_mode, "UTILIZATION") == "UTILIZATION" ? try(local.lb_raw.backend.max_utilization, 0.8) : null
       capacity_scaler              = try(local.lb_raw.backend.capacity_scaler, 1.0)
-      max_rate                     = null
-      max_rate_per_instance        = null
+      max_rate                     = try(local.lb_raw.backend.max_rate, null)
+      max_rate_per_instance        = try(local.lb_raw.backend.balancing_mode, "UTILIZATION") == "RATE" ? try(local.lb_raw.backend.max_rate_per_instance, 10) : null
       max_rate_per_endpoint        = null
       max_connections              = null
       max_connections_per_instance = null
@@ -50,12 +50,13 @@ locals {
 
   # Normalized Load Balancer Configuration
   lb = {
-    name           = "${try(local.lb_raw.name, "glb-web")}-${var.environment}"
-    create_address = try(local.lb_raw.create_address, true)
-    http_forward   = try(local.lb_raw.http_forward, true)
-    ssl            = try(local.lb_raw.ssl, false)
-    https_redirect = try(local.lb_raw.https_redirect, false)
-    labels         = merge(local.common_tags, try(local.lb_raw.labels, {}))
+    name                  = "${try(local.lb_raw.name, "glb-web")}-${var.environment}"
+    load_balancing_scheme = try(local.lb_raw.load_balancing_scheme, "EXTERNAL_MANAGED")
+    create_address        = try(local.lb_raw.create_address, true)
+    http_forward          = try(local.lb_raw.http_forward, true)
+    ssl                   = try(local.lb_raw.ssl, false)
+    https_redirect        = try(local.lb_raw.https_redirect, false)
+    labels                = merge(local.common_tags, try(local.lb_raw.labels, {}))
 
     backend = {
       description                     = try(local.lb_raw.backend.description, "Global HTTP Backend Service for ${var.environment}")
@@ -66,6 +67,7 @@ locals {
       enable_cdn                      = try(local.lb_raw.backend.enable_cdn, false)
       connection_draining_timeout_sec = tonumber(try(local.lb_raw.backend.connection_draining_timeout_sec, 30))
       session_affinity                = try(local.lb_raw.backend.session_affinity, "NONE")
+      locality_lb_policy              = try(local.lb_raw.backend.locality_lb_policy, "ROUND_ROBIN")
       affinity_cookie_ttl_sec         = try(local.lb_raw.backend.affinity_cookie_ttl_sec, null)
       compression_mode                = try(local.lb_raw.backend.compression_mode, "DISABLED")
       security_policy                 = try(local.lb_raw.backend.security_policy, null)

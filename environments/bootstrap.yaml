@@ -68,6 +68,12 @@ service_account:
     # 4-Availability & Load Balancing (Backend Services, URL Maps, Health Checks)
     - roles/compute.loadBalancerAdmin
 
+    # Required to create Service Accounts
+    - roles/iam.serviceAccountAdmin
+
+    # Required to bind Project IAM roles
+    - roles/resourcemanager.projectIamAdmin
+    
     # Inspection
     - roles/viewer
 

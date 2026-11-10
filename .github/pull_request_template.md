@@ -4,8 +4,11 @@
 deployment_request:
   infrastructure:
     - network
+    - security
+    - compute
+    - availability
   environment: dev
-  description: "Deploy/Update network infrastructure"
+  description: "Deploy full stack foundation (Network, Security, Compute, Availability)"
 ```
 
 ---
@@ -14,6 +17,6 @@ deployment_request:
 <!-- Describe the infrastructure changes and why they are being introduced -->
 
 ### Checklist
-- [ ] YAML configuration matches `schemas/network.schema.json`
-- [ ] Target environment is verified
-- [ ] Security scan requirements are met
+- [] YAML configurations match `schemas/*.schema.json`
+- [] Target environment is verified
+- [] Security scan requirements are met

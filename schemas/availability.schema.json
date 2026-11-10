@@ -46,6 +46,13 @@
                             "minLength": 2,
                             "description": "Base name of the Global External Application Load Balancer"
                         },
+                        "load_balancing_scheme": {
+                            "type": "string",
+                            "enum": [
+                                "EXTERNAL",
+                                "EXTERNAL_MANAGED"
+                            ]
+                        },
                         "create_address": {
                             "type": "boolean"
                         },
@@ -105,6 +112,17 @@
                                         "GENERATED_COOKIE"
                                     ]
                                 },
+                                "locality_lb_policy": {
+                                    "type": "string",
+                                    "enum": [
+                                        "ROUND_ROBIN",
+                                        "LEAST_REQUEST",
+                                        "RING_HASH",
+                                        "RANDOM",
+                                        "ORIGINAL_DESTINATION",
+                                        "MAGLEV"
+                                    ]
+                                },
                                 "balancing_mode": {
                                     "type": "string",
                                     "enum": [
@@ -116,6 +134,10 @@
                                     "type": "number",
                                     "minimum": 0.1,
                                     "maximum": 1.0
+                                },
+                                "max_rate_per_instance": {
+                                    "type": "number",
+                                    "minimum": 1
                                 },
                                 "capacity_scaler": {
                                     "type": "number",
