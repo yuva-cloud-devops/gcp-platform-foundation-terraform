@@ -81,6 +81,11 @@ cloudbuild:
       name: gcp-platform-foundation-terraform
       parent_connection: projects/yuvaraj-internal-project/locations/asia-south1/connections/github-connection
       remote_uri: "https://github.com/yuva-cloud-devops/gcp-platform-foundation-terraform.git"
+    github_repo_2:
+      name: gcp-managed-instance-group-templates-app
+      parent_connection: projects/yuvaraj-internal-project/locations/asia-south1/connections/github-connection
+      remote_uri: "https://github.com/yuva-cloud-devops/gcp-managed-instance-group-templates-app.git"
+
 
   triggers:
     # 1. CI Trigger: Runs on Pull Requests
@@ -109,6 +114,17 @@ cloudbuild:
         _AUTO_APPROVE: "true"
         _REPO_OWNER: "yuva-cloud-devops"
         _GITHUB_APP_ID: "5622633"
+
+    # 3. App Packer Golden Image CI/CD Trigger: Runs on Push/Merge to main
+    app_packer_cicd_trigger:
+      name: "gcp-mig-test-app-packer-build"
+      description: "Build Go binary and create Packer Golden Image on merge to main"
+      filename: "cloudbuild.yaml"
+      repository_key: "github_repo_2"
+      push:
+        branch: "^main$"
+      substitutions:
+        _ZONE: "asia-south1-a"
 
 
 secrets:

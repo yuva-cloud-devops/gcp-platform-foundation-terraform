@@ -52,8 +52,8 @@ for ordered_name in "${ORDERED_HIERARCHY[@]}"; do
     if [ "$ordered_name" = "$detected" ]; then
       case "$detected" in
         network)      DIR="1-network-infrastructure" ;;
-        security)     DIR="3-security-infrastructure" ;;
-        compute)      DIR="2-compute-infrastructure" ;;
+        security)     DIR="2-security-infrastructure" ;;
+        compute)      DIR="3-compute-infrastructure" ;;
         availability) DIR="4-availability-infrastructure" ;;
         *) DIR="" ;;
       esac

@@ -2,7 +2,11 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "NetworkInfrastructureConfig",
   "type": "object",
-  "required": ["project_id", "region", "network"],
+  "required": [
+    "project_id",
+    "region",
+    "network"
+  ],
   "properties": {
     "project_id": {
       "type": "string",
@@ -13,13 +17,25 @@
       "type": "string",
       "description": "Default GCP region"
     },
+    "tags": {
+      "type": "object",
+      "description": "Common key-value labels/tags for resource identification",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
     "network": {
       "type": "object",
-      "required": ["vpc"],
+      "required": [
+        "vpc"
+      ],
       "properties": {
         "vpc": {
           "type": "object",
-          "required": ["network_name", "subnets"],
+          "required": [
+            "network_name",
+            "subnets"
+          ],
           "properties": {
             "network_name": {
               "type": "string",
@@ -29,15 +45,28 @@
               "type": "array",
               "items": {
                 "type": "object",
-                "required": ["subnet_name", "subnet_ip", "subnet_region"],
+                "required": [
+                  "subnet_name",
+                  "subnet_ip",
+                  "subnet_region"
+                ],
                 "properties": {
-                  "subnet_name": { "type": "string" },
+                  "subnet_name": {
+                    "type": "string"
+                  },
                   "subnet_ip": {
                     "type": "string",
                     "pattern": "^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}/[0-9]{1,2}$"
                   },
-                  "subnet_region": { "type": "string" },
-                  "subnet_private_access": { "type": "boolean" }
+                  "subnet_region": {
+                    "type": "string"
+                  },
+                  "subnet_private_access": {
+                    "type": "boolean"
+                  },
+                  "description": {
+                    "type": "string"
+                  }
                 }
               }
             },
@@ -48,16 +77,35 @@
                   "type": "array",
                   "items": {
                     "type": "object",
-                    "required": ["name", "source_ranges", "ports"],
+                    "required": [
+                      "name",
+                      "source_ranges",
+                      "ports"
+                    ],
                     "properties": {
-                      "name": { "type": "string" },
+                      "name": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
                       "source_ranges": {
                         "type": "array",
-                        "items": { "type": "string" }
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "target_tags": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
                       },
                       "ports": {
                         "type": "array",
-                        "items": { "type": "string" }
+                        "items": {
+                          "type": "string"
+                        }
                       }
                     }
                   }
@@ -66,16 +114,35 @@
                   "type": "array",
                   "items": {
                     "type": "object",
-                    "required": ["name", "destination_ranges", "ports"],
+                    "required": [
+                      "name",
+                      "destination_ranges",
+                      "ports"
+                    ],
                     "properties": {
-                      "name": { "type": "string" },
+                      "name": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
                       "destination_ranges": {
                         "type": "array",
-                        "items": { "type": "string" }
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "target_tags": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
                       },
                       "ports": {
                         "type": "array",
-                        "items": { "type": "string" }
+                        "items": {
+                          "type": "string"
+                        }
                       }
                     }
                   }
@@ -88,15 +155,27 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["name", "region", "bgp"],
+            "required": [
+              "name",
+              "region",
+              "bgp"
+            ],
             "properties": {
-              "name": { "type": "string" },
-              "region": { "type": "string" },
+              "name": {
+                "type": "string"
+              },
+              "region": {
+                "type": "string"
+              },
               "bgp": {
                 "type": "object",
-                "required": ["asn"],
+                "required": [
+                  "asn"
+                ],
                 "properties": {
-                  "asn": { "type": "string" }
+                  "asn": {
+                    "type": "string"
+                  }
                 }
               }
             }
@@ -106,11 +185,21 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["name", "region", "router_name"],
+            "required": [
+              "name",
+              "region",
+              "router_name"
+            ],
             "properties": {
-              "name": { "type": "string" },
-              "region": { "type": "string" },
-              "router_name": { "type": "string" }
+              "name": {
+                "type": "string"
+              },
+              "region": {
+                "type": "string"
+              },
+              "router_name": {
+                "type": "string"
+              }
             }
           }
         }

@@ -76,16 +76,16 @@ for infra in "${INFRAS[@]}"; do
       SCHEMA_FILE="schemas/network.schema.json"
       ORDER=1
       ;;
-    compute)
-      DIR="2-compute-infrastructure"
-      CONFIG_FILE="environments/${ENV}/compute.yaml"
-      SCHEMA_FILE="schemas/compute.schema.json"
-      ORDER=2
-      ;;
     security)
-      DIR="3-security-infrastructure"
+      DIR="2-security-infrastructure"
       CONFIG_FILE="environments/${ENV}/security.yaml"
       SCHEMA_FILE="schemas/security.schema.json"
+      ORDER=2
+      ;;
+    compute)
+      DIR="3-compute-infrastructure"
+      CONFIG_FILE="environments/${ENV}/compute.yaml"
+      SCHEMA_FILE="schemas/compute.schema.json"
       ORDER=3
       ;;
     availability)

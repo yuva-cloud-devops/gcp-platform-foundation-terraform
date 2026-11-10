@@ -51,14 +51,15 @@ steps:
       - '-c'
       - |
         echo "-------------------------------------------------------------------------------------------------------"
-        apt-get update && apt-get install -y jq
+        apt-get update && apt-get install -y jq python3-yaml python3-jsonschema
         chmod +x cloudbuild-pipelines/scripts/*.sh
         TARGET_COUNT=$$(jq '.targets | length' deployment_scope.json)
         
         echo "-------------------------------------------------------------------------------------------------------"
         for i in $$(seq 0 $$((TARGET_COUNT - 1))); do
           CONFIG_PATH=$$(jq -r ".targets[$$i].config" deployment_scope.json)
-          ./cloudbuild-pipelines/scripts/validate-config.sh "$$CONFIG_PATH"
+          SCHEMA_PATH=$$(jq -r ".targets[$$i].schema" deployment_scope.json)
+          ./cloudbuild-pipelines/scripts/validate-config.sh "$$CONFIG_PATH" "$$SCHEMA_PATH"
           echo "...................................................................................................."
         done
         echo "-------------------------------------------------------------------------------------------------------"

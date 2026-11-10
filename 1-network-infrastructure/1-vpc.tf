@@ -12,6 +12,7 @@ module "vpc" {
   # VPC Configurations:
   network_name = "${local.config.network.vpc.network_name}-${var.environment}"
   routing_mode = try(local.config.network.vpc.routing_mode, "GLOBAL")
+  description  = local.tag_description
 
   # Subnet Configurations:
   auto_create_subnetworks = try(local.config.network.vpc.auto_create_subnetworks, false)

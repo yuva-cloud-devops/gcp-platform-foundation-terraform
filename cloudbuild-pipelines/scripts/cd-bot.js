@@ -18,7 +18,7 @@ const REPO_NAME = process.env.REPO_NAME || process.argv[3];
 const DEPLOYMENT_SCOPE_FILE = process.env.DEPLOYMENT_SCOPE || process.argv[4] || 'deployment_scope.json';
 const COMMIT_SHA = process.env.SHORT_SHA || 'latest';
 const BUILD_ID = process.env.BUILD_ID || 'N/A';
-const STATE_BUCKET = process.env.STATE_BUCKET || 'yuvaraj-internal-project-terraform-state';
+const STATE_BUCKET = process.env.STATE_BUCKET || 'gcp-remote-backend-tfstate-management-bucket';
 
 if (!APP_ID || !PRIVATE_KEY) {
     console.error('❌ Error: GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY must be provided.');
