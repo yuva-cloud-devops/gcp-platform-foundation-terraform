@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ==============================================================================
-# PR Deployment Request Validator & Mapping Engine (Pure Bash - No jq dependency)
+# PR Deployment Request Validator & Mapping Engine
 # ==============================================================================
 
 PAYLOAD_FILE="${1:-pr_body.txt}"
@@ -65,7 +65,7 @@ fi
 
 echo "📋 Infrastructure requested: ${INFRAS[*]}"
 
-# 3. Resolve directory & YAML paths (Pure Bash array construction)
+# 3. Resolve directory & YAML paths (Strict Layer Order: network -> security -> compute -> availability)
 TARGET_ENTRIES=()
 
 for infra in "${INFRAS[@]}"; do
@@ -123,8 +123,8 @@ EOF
   TARGET_ENTRIES+=("$ENTRY")
 done
 
-# 4. Construct deployment_scope.json without jq
-cat <<EOF > "$OUTPUT_JSON"
+# 4. Construct deployment_scope.json and sort targets by order
+cat <<EOF > "${OUTPUT_JSON}.tmp"
 {
   "environment": "$ENV",
   "targets": [
@@ -132,6 +132,9 @@ $(IFS=,; echo "${TARGET_ENTRIES[*]}")
   ]
 }
 EOF
+
+jq '.targets |= sort_by(.order)' "${OUTPUT_JSON}.tmp" > "$OUTPUT_JSON"
+rm -f "${OUTPUT_JSON}.tmp"
 
 echo "=========================================================="
 echo "✅ deployment_scope.json generated successfully:"

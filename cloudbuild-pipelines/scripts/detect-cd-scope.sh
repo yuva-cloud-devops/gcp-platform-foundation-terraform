@@ -36,10 +36,10 @@ for file in $CHANGED_FILES; do
   fi
 done
 
-# Fallback: Default to 'dev' / 'network' if no specific environment YAML was modified
 ENV="${ENV:-dev}"
 if [ ${#DETECTED_INFRAS[@]} -eq 0 ]; then
-  DETECTED_INFRAS=("network")
+  echo "❌ Error: No modified environment YAML files detected in merge commit."
+  exit 1
 fi
 
 # 3. Enforce Architectural Execution Hierarchy (Bootstrap excluded):
@@ -51,16 +51,38 @@ for ordered_name in "${ORDERED_HIERARCHY[@]}"; do
   for detected in "${DETECTED_INFRAS[@]}"; do
     if [ "$ordered_name" = "$detected" ]; then
       case "$detected" in
-        network)      DIR="1-network-infrastructure" ;;
-        security)     DIR="2-security-infrastructure" ;;
-        compute)      DIR="3-compute-infrastructure" ;;
-        availability) DIR="4-availability-infrastructure" ;;
-        *) DIR="" ;;
+        network)
+          DIR="1-network-infrastructure"
+          CONFIG_FILE="environments/${ENV}/network.yaml"
+          SCHEMA_FILE="schemas/network.schema.json"
+          ;;
+        security)
+          DIR="2-security-infrastructure"
+          CONFIG_FILE="environments/${ENV}/security.yaml"
+          SCHEMA_FILE="schemas/security.schema.json"
+          ;;
+        compute)
+          DIR="3-compute-infrastructure"
+          CONFIG_FILE="environments/${ENV}/compute.yaml"
+          SCHEMA_FILE="schemas/compute.schema.json"
+          ;;
+        availability)
+          DIR="4-availability-infrastructure"
+          CONFIG_FILE="environments/${ENV}/availability.yaml"
+          SCHEMA_FILE="schemas/availability.schema.json"
+          ;;
+        *)
+          DIR=""
+          ;;
       esac
 
       if [ -n "$DIR" ] && [ -d "$DIR" ]; then
-        TARGETS_JSON=$(echo "$TARGETS_JSON" | jq --arg name "$detected" --arg dir "$DIR" \
-          '. += [{"name": $name, "dir": $dir}] | unique_by(.name)')
+        TARGETS_JSON=$(echo "$TARGETS_JSON" | jq \
+          --arg name "$detected" \
+          --arg dir "$DIR" \
+          --arg config "$CONFIG_FILE" \
+          --arg schema "$SCHEMA_FILE" \
+          '. += [{"name": $name, "dir": $dir, "config": $config, "schema": $schema}] | unique_by(.name)')
       fi
     fi
   done

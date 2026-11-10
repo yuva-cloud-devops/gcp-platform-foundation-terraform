@@ -22,7 +22,7 @@ steps:
           "${_REPO_NAME}"
 
   # ----------------------------------------------------------------------------
-  # Step 2: Validate Target YAML Configurations
+  # Step 2: Validate Target YAML Configurations against JSON Schemas
   # ----------------------------------------------------------------------------
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
     id: 'validate-configs'
@@ -30,8 +30,15 @@ steps:
     args:
       - '-c'
       - |
-        apt-get update && apt-get install -y jq
-        ./cloudbuild-pipelines/scripts/validate-config.sh deployment_scope.json
+        apt-get update && apt-get install -y jq python3-yaml python3-jsonschema
+        chmod +x cloudbuild-pipelines/scripts/*.sh
+        TARGET_COUNT=$$(jq '.targets | length' deployment_scope.json)
+        
+        for i in $$(seq 0 $$((TARGET_COUNT - 1))); do
+          CONFIG_PATH=$$(jq -r ".targets[$$i].config" deployment_scope.json)
+          SCHEMA_PATH=$$(jq -r ".targets[$$i].schema" deployment_scope.json)
+          ./cloudbuild-pipelines/scripts/validate-config.sh "$$CONFIG_PATH" "$$SCHEMA_PATH"
+        done
 
   # ----------------------------------------------------------------------------
   # Step 3: Sequential Terraform Apply (Fail-Fast: Halts Immediately on Any Error)
@@ -58,7 +65,7 @@ steps:
           
           echo ""
           echo "----------------------------------------------------------"
-          echo "📦 STEP [$((i + 1))/$$TARGET_COUNT]: Applying $$NAME ($$DIR)"
+          echo "📦 STEP [$$((i + 1))/$$TARGET_COUNT]: Applying $$NAME ($$DIR)"
           echo "----------------------------------------------------------"
 
           # 1. Initialize State in GCS: gs://<state-bucket>/<env>/<infra>/default.tfstate
@@ -80,8 +87,8 @@ steps:
             -input=false
 
           echo "✅ Layer '$$NAME' applied successfully!"
-          echo "3️⃣ Layer '$$NAME' outputs:"
-          terraform -chdir="$$DIR" output || true
+          echo "3️⃣ Exporting Layer '$$NAME' outputs for CD Audit Bot..."
+          terraform -chdir="$$DIR" output -json > "$$DIR/outputs.json" || true
         done
 
         echo ""
@@ -111,7 +118,7 @@ steps:
         echo "Applied Path : $$TARGETS"
         echo "Commit SHA   : ${SHORT_SHA}"
         echo "Build ID     : $BUILD_ID"
-        echo "Applied At   : $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+        echo "Applied At   : $$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
         echo "=========================================================="
   
   # ----------------------------------------------------------------------------

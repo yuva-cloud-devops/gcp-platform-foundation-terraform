@@ -10,24 +10,51 @@ steps:
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
     id: 'parse-pr-scope'
     entrypoint: 'bash'
+    secretEnv: ['GITHUB_APP_PRIVATE_KEY']
     args:
       - '-c'
       - |
-        apt-get update && apt-get install -y jq curl git
+        apt-get update && apt-get install -y jq curl git openssl
         chmod +x cloudbuild-pipelines/scripts/*.sh
         
         echo "-------------------------------------------------------------------------------------------------------"
-        echo "🔍 Fetching PR #${_PR_NUMBER} details from GitHub API..."
+        echo "🔑 Minting GitHub App JWT to read PR #${_PR_NUMBER}..."
         
+        NOW=$$(date +%s)
+        IAT=$$((NOW - 60))
+        EXP=$$((NOW + 540))
+        
+        HEADER=$$(echo -n '{"alg":"RS256","typ":"JWT"}' | openssl base64 -e -A | tr '+/' '-_' | tr -d '=')
+        PAYLOAD=$$(echo -n "{\"iat\":$$IAT,\"exp\":$$EXP,\"iss\":\"${_GITHUB_APP_ID}\"}" | openssl base64 -e -A | tr '+/' '-_' | tr -d '=')
+        
+        echo "$$GITHUB_APP_PRIVATE_KEY" > /tmp/app_key.pem
+        SIGNATURE=$$(echo -n "$${HEADER}.$${PAYLOAD}" | openssl dgst -sha256 -sign /tmp/app_key.pem | openssl base64 -e -A | tr '+/' '-_' | tr -d '=')
+        rm -f /tmp/app_key.pem
+        JWT="$${HEADER}.$${PAYLOAD}.$${SIGNATURE}"
+        
+        INSTALL_ID=$$(curl -s -H "Authorization: Bearer $$JWT" -H "Accept: application/vnd.github+json" \
+          "https://api.github.com/repos/${_REPO_OWNER}/${_REPO_NAME}/installation" | jq -r '.id // empty')
+          
+        if [ -z "$$INSTALL_ID" ]; then
+          echo "❌ Error: Could not obtain GitHub App Installation ID for ${_REPO_OWNER}/${_REPO_NAME}."
+          exit 1
+        fi
+        
+        INSTALL_TOKEN=$$(curl -s -X POST -H "Authorization: Bearer $$JWT" -H "Accept: application/vnd.github+json" \
+          "https://api.github.com/app/installations/$$INSTALL_ID/access_tokens" | jq -r '.token // empty')
+          
+        if [ -z "$$INSTALL_TOKEN" ]; then
+          echo "❌ Error: Could not mint GitHub App Installation Access Token."
+          exit 1
+        fi
+        
+        echo "🔍 Fetching PR #${_PR_NUMBER} details from GitHub API..."
         PR_API_URL="https://api.github.com/repos/${_REPO_OWNER}/${_REPO_NAME}/pulls/${_PR_NUMBER}"
-        curl -s -H "Accept: application/vnd.github.v3+json" "$$PR_API_URL" | jq -r '.body // ""' > pr_body.txt
+        curl -s -H "Authorization: token $$INSTALL_TOKEN" -H "Accept: application/vnd.github.v3+json" "$$PR_API_URL" | jq -r '.body // ""' > pr_body.txt
         
         if [ ! -s pr_body.txt ] || [ "$$(cat pr_body.txt)" = "null" ] || [ "$$(cat pr_body.txt)" = "" ]; then
-          echo "⚠️ Note: Could not fetch PR body or empty. Using default scope."
-          echo "deployment_request:" > pr_body.txt
-          echo "  infrastructure:" >> pr_body.txt
-          echo "    - network" >> pr_body.txt
-          echo "  environment: dev" >> pr_body.txt
+          echo "❌ Error: PR #${_PR_NUMBER} description is empty. Please provide the deployment_request metadata block."
+          exit 1
         fi
         
         echo "-------------------------------------------------------------------------------------------------------"
@@ -38,7 +65,6 @@ steps:
         echo "-------------------------------------------------------------------------------------------------------"
         ./cloudbuild-pipelines/scripts/validate-request.sh pr_body.txt
         echo "-------------------------------------------------------------------------------------------------------"
-
 
 
   # ----------------------------------------------------------------------------
