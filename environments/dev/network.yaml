@@ -1,6 +1,12 @@
 project_id: yuvaraj-internal-project
 region: asia-south1
 
+tags:
+  provisioned_by: terraform
+  environment: dev
+  project: gcp-platform-foundation-terraform
+
+  
 network:
   vpc:
     # VPC Configuration
@@ -20,17 +26,34 @@ network:
     # Firewall Rules
     firewall_rules:
       ingress:
-        - name: allow-management
+        - name: allow-iap-ssh
           source_ranges:
-            - 10.0.0.0/8
+            - 35.235.240.0/20
+          target_tags:
+            - allow-iap-ssh
           ports:
             - "22"
-        - name: allow-web
+
+        - name: allow-health-check
           source_ranges:
-            - 0.0.0.0/0
+            - 130.211.0.0/22
+            - 35.191.0.0/16
+          target_tags:
+            - allow-health-check
+          ports:
+            - "8080"
+
+        - name: allow-load-balancer
+          source_ranges:
+            - 130.211.0.0/22
+            - 35.191.0.0/16
+          target_tags:
+            - allow-web
           ports:
             - "80"
             - "443"
+            - "8080"
+
       egress:
         - name: allow-internet
           destination_ranges:

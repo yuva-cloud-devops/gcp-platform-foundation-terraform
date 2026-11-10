@@ -1,0 +1,271 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "ComputeInfrastructureConfig",
+    "type": "object",
+    "required": [
+        "project_id",
+        "region",
+        "compute"
+    ],
+    "properties": {
+        "project_id": {
+            "type": "string",
+            "minLength": 4,
+            "description": "GCP Project ID for provisioning"
+        },
+        "region": {
+            "type": "string",
+            "description": "Default GCP region"
+        },
+        "state_bucket": {
+            "type": "string",
+            "description": "GCS bucket storing upstream Terraform remote states"
+        },
+        "tags": {
+            "type": "object",
+            "description": "Common key-value labels/tags applied to VMs, templates, and disks",
+            "additionalProperties": {
+                "type": "string"
+            }
+        },
+        "compute": {
+            "type": "object",
+            "required": [
+                "instance_template",
+                "migs"
+            ],
+            "properties": {
+                "instance_template": {
+                    "type": "object",
+                    "required": [
+                        "name_prefix",
+                        "machine_type",
+                        "service_account_name",
+                        "source_image_project"
+                    ],
+                    "properties": {
+                        "name_prefix": {
+                            "type": "string"
+                        },
+                        "machine_type": {
+                            "type": "string"
+                        },
+                        "disk_size_gb": {
+                            "type": "integer",
+                            "minimum": 10
+                        },
+                        "disk_type": {
+                            "type": "string",
+                            "enum": [
+                                "pd-standard",
+                                "pd-balanced",
+                                "pd-ssd",
+                                "pd-extreme"
+                            ]
+                        },
+                        "auto_delete": {
+                            "type": "boolean"
+                        },
+                        "enable_shielded_vm": {
+                            "type": "boolean"
+                        },
+                        "nic_type": {
+                            "type": "string",
+                            "enum": [
+                                "GVNIC",
+                                "VIRTIO_NET"
+                            ]
+                        },
+                        "service_account_name": {
+                            "type": "string"
+                        },
+                        "source_image_project": {
+                            "type": "string"
+                        },
+                        "source_image_family": {
+                            "type": "string"
+                        },
+                        "source_image": {
+                            "type": "string"
+                        },
+                        "startup_script": {
+                            "type": "string"
+                        },
+                        "tags": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                },
+                "migs": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "required": [
+                            "name",
+                            "region",
+                            "subnet_name"
+                        ],
+                        "properties": {
+                            "name": {
+                                "type": "string"
+                            },
+                            "region": {
+                                "type": "string"
+                            },
+                            "subnet_name": {
+                                "type": "string"
+                            },
+                            "target_size": {
+                                "type": "integer",
+                                "minimum": 1
+                            },
+                            "named_ports": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "required": [
+                                        "name",
+                                        "port"
+                                    ],
+                                    "properties": {
+                                        "name": {
+                                            "type": "string"
+                                        },
+                                        "port": {
+                                            "type": "integer",
+                                            "minimum": 1,
+                                            "maximum": 65535
+                                        }
+                                    }
+                                }
+                            },
+                            "autoscaling": {
+                                "type": "object",
+                                "required": [
+                                    "enabled",
+                                    "min_replicas",
+                                    "max_replicas"
+                                ],
+                                "properties": {
+                                    "enabled": {
+                                        "type": "boolean"
+                                    },
+                                    "min_replicas": {
+                                        "type": "integer",
+                                        "minimum": 1
+                                    },
+                                    "max_replicas": {
+                                        "type": "integer",
+                                        "minimum": 1
+                                    },
+                                    "cooldown_period": {
+                                        "type": "integer",
+                                        "minimum": 15
+                                    },
+                                    "cpu_target": {
+                                        "type": "number",
+                                        "minimum": 0.1,
+                                        "maximum": 1.0
+                                    }
+                                }
+                            },
+                            "health_check": {
+                                "type": "object",
+                                "required": [
+                                    "type",
+                                    "port",
+                                    "request_path"
+                                ],
+                                "properties": {
+                                    "type": {
+                                        "type": "string",
+                                        "enum": [
+                                            "http",
+                                            "https",
+                                            "tcp"
+                                        ]
+                                    },
+                                    "port": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 65535
+                                    },
+                                    "request_path": {
+                                        "type": "string"
+                                    },
+                                    "check_interval_sec": {
+                                        "type": "integer",
+                                        "minimum": 1
+                                    },
+                                    "healthy_threshold": {
+                                        "type": "integer",
+                                        "minimum": 1
+                                    },
+                                    "unhealthy_threshold": {
+                                        "type": "integer",
+                                        "minimum": 1
+                                    },
+                                    "timeout_sec": {
+                                        "type": "integer",
+                                        "minimum": 1
+                                    },
+                                    "initial_delay_sec": {
+                                        "type": "integer",
+                                        "minimum": 0
+                                    },
+                                    "enable_logging": {
+                                        "type": "boolean"
+                                    }
+                                }
+                            },
+                            "update_policy": {
+                                "type": "object",
+                                "properties": {
+                                    "type": {
+                                        "type": "string",
+                                        "enum": [
+                                            "PROACTIVE",
+                                            "OPPORTUNISTIC"
+                                        ]
+                                    },
+                                    "minimal_action": {
+                                        "type": "string",
+                                        "enum": [
+                                            "REPLACE",
+                                            "RESTART",
+                                            "REFRESH",
+                                            "NONE"
+                                        ]
+                                    },
+                                    "replacement_method": {
+                                        "type": "string",
+                                        "enum": [
+                                            "SUBSTITUTE",
+                                            "RECREATE"
+                                        ]
+                                    },
+                                    "max_surge_fixed": {
+                                        "type": "integer",
+                                        "minimum": 0
+                                    },
+                                    "max_unavailable_fixed": {
+                                        "type": "integer",
+                                        "minimum": 0
+                                    },
+                                    "min_ready_sec": {
+                                        "type": "integer",
+                                        "minimum": 0
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

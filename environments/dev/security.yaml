@@ -1,0 +1,22 @@
+project_id: yuvaraj-internal-project
+region: asia-south1
+
+tags:
+  provisioned_by: terraform
+  environment: dev
+  project: gcp-platform-foundation-terraform
+
+  
+security:
+  service_accounts:
+    - name: sa-mig-workload
+      display_name: "MIG Compute Workload Service Account"
+      description: "Least privilege identity for Managed Instance Group VMs"
+      roles:
+        - roles/logging.logWriter
+        - roles/monitoring.metricWriter
+        - roles/stackdriver.resourceMetadata.writer
+        # Secure Shell Access without Public IPs
+        - roles/compute.osLogin
+        # Application Secret Access (if app uses Secret Manager)
+        - roles/secretmanager.secretAccessor

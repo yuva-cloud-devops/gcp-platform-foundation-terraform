@@ -2,7 +2,7 @@
 
 /**
  * ==============================================================================
- * GitHub App PR Bot Publisher
+ * GitHub App PR Bot Publisher (Ultra-Compact Edition)
  * 100% Dynamic - Zero Sample/Fallback Data
  * Parses real output from Gitleaks, Trivy, Checkov, and tfplan.json
  * ==============================================================================
@@ -89,11 +89,11 @@ function stripAnsi(str) {
     return (str || '').replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
 }
 
-// 3. Structured tfplan.json Parser
+// 3. Structured Compact tfplan.json Parser
 function parseTerraformPlanJson(targetDir) {
     const jsonPath = path.join(targetDir, 'tfplan.json');
     if (!fs.existsSync(jsonPath)) {
-        return { planSummary: 'No plan generated', resources: [], outputs: [] };
+        return { planSummary: 'No plan generated', counts: { toAdd: 0, toChange: 0, toDestroy: 0 }, grouped: [], resources: [], outputs: [] };
     }
 
     const plan = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
@@ -102,13 +102,13 @@ function parseTerraformPlanJson(targetDir) {
 
     let toAdd = 0, toChange = 0, toDestroy = 0;
     const resources = [];
+    const groupedMap = new Map();
 
     for (const rc of resourceChanges) {
         const actions = rc.change.actions;
-        let actionLabel = '➕ CREATE';
-
         if (actions.includes('no-op') || actions.includes('read')) continue;
 
+        let actionLabel = '➕ CREATE';
         if (actions.includes('delete') && actions.includes('create')) {
             actionLabel = '⚠️ RECREATE';
             toDestroy++;
@@ -144,13 +144,28 @@ function parseTerraformPlanJson(targetDir) {
             details.push(`Source: \`${after.source_ranges.join(', ')}\``);
         }
 
-        resources.push({
+        const resObj = {
             action: actionLabel,
             type: rType,
             name: rName,
+            address: rc.address,
             details: details.join(', ') || 'Standard configuration'
-        });
+        };
+        resources.push(resObj);
+
+        // Group by Action + Resource Type
+        const groupKey = `${actionLabel}|${rType}`;
+        if (!groupedMap.has(groupKey)) {
+            groupedMap.set(groupKey, {
+                action: actionLabel,
+                type: rType,
+                names: []
+            });
+        }
+        groupedMap.get(groupKey).names.push(rName);
     }
+
+    const grouped = Array.from(groupedMap.values());
 
     const outputs = [];
     for (const [key, out] of Object.entries(outputChanges)) {
@@ -167,7 +182,7 @@ function parseTerraformPlanJson(targetDir) {
     }
 
     const planSummary = `Plan: ${toAdd} to add, ${toChange} to change, ${toDestroy} to destroy`;
-    return { planSummary, resources, outputs };
+    return { planSummary, counts: { toAdd, toChange, toDestroy }, grouped, resources, outputs };
 }
 
 // 4. Main Function
@@ -198,7 +213,7 @@ async function main() {
         const infraNames = scope.targets.map(t => t.name).join(', ') || 'network';
 
         // --------------------------------------------------------------------------
-        // A. 100% Real Dynamic Gitleaks Parser
+        // A. Dynamic Gitleaks Parser
         // --------------------------------------------------------------------------
         let gitleaksStatus = '✅ No hardcoded secrets detected';
         let gitleaksDetail = 'No report available.';
@@ -211,7 +226,6 @@ async function main() {
             if (/no leaks found/i.test(rawGl)) {
                 gitleaksStatus = '✅ No hardcoded secrets detected';
                 gitleaksBadge = '✅ PASSED';
-                // Extract ascii art + summary
                 const lines = rawGl.split('\n');
                 const summaryIdx = lines.findIndex(l => l.includes('commits scanned') || l.includes('no leaks found'));
                 if (summaryIdx !== -1) {
@@ -225,7 +239,7 @@ async function main() {
         }
 
         // --------------------------------------------------------------------------
-        // B. 100% Real Dynamic Trivy Parser
+        // B. Dynamic Trivy Parser
         // --------------------------------------------------------------------------
         let trivyStatus = '✅ 0 High/Critical vulnerabilities';
         let trivyDetail = 'Clean (0 findings)';
@@ -264,15 +278,13 @@ async function main() {
         }
 
         // --------------------------------------------------------------------------
-        // C. 100% Real Dynamic Checkov Parser (Zero Hardcoded Checks)
+        // C. Dynamic Checkov Parser
         // --------------------------------------------------------------------------
         let passedChecks = [];
         let failedChecks = [];
 
         if (fs.existsSync('checkov_report.txt')) {
             const rawCk = stripAnsi(fs.readFileSync('checkov_report.txt', 'utf8'));
-
-            // Split into individual check blocks
             const checkBlocks = rawCk.split(/(?=Check:\s*CKV_)/);
 
             for (const block of checkBlocks) {
@@ -314,14 +326,14 @@ async function main() {
         let checkovBadge = `✅ ${totalPassed} PASSED`;
 
         if (totalFailed > 0) {
-            checkovStatus = `⚠️ Policy issues: Passed checks: ${totalPassed}, Failed checks: ${totalFailed}`;
+            checkovStatus = `⚠️ Policy issues: Passed: ${totalPassed}, Failed: ${totalFailed}`;
             checkovBadge = `⚠️ ${totalPassed} PASSED / ${totalFailed} FAILED`;
         }
 
         const hasAnyWarnings = (totalFailed > 0) || (gitleaksBadge.includes('FAIL')) || (trivyBadge.includes('WARN') || trivyBadge.includes('ERROR'));
 
         // --------------------------------------------------------------------------
-        // D. Build Final Markdown Comment
+        // D. Build Final Ultra-Compact Markdown Comment
         // --------------------------------------------------------------------------
         let commentBody = `## 🤖 Terraform Plan & Compliance Audit Report\n\n`;
         commentBody += `| **Target Environment** | **Infrastructure Scope** | **Security Checks** | **Pipeline Status** |\n`;
@@ -337,28 +349,15 @@ async function main() {
         commentBody += `| **Trivy** | Vulnerabilities & Misconfigurations | ${trivyStatus} |\n`;
         commentBody += `| **Checkov** | GCP CIS IaC Policies & Best Practices | ${checkovStatus} |\n\n`;
 
-        // 2. Gitleaks Detail
-        commentBody += `#### 1️⃣ Gitleaks (Secret Detection) — \`${gitleaksBadge}\`\n\n`;
-        commentBody += `<details>\n<summary><b>Click to View Gitleaks Scan Summary</b></summary>\n\n\`\`\`text\n${gitleaksDetail}\n\`\`\`\n\n</details>\n\n---\n\n`;
-
-        // 3. Trivy Detail
-        commentBody += `#### 2️⃣ Trivy (Vulnerabilities & IaC Misconfigurations) — \`${trivyBadge}\`\n\n`;
-        commentBody += `<details>\n<summary><b>Click to View Trivy Report Summary Table</b></summary>\n\n\`\`\`text\n${trivyDetail}\n\`\`\`\n\n</details>\n\n---\n\n`;
-
-        // 4. Checkov Detail
-        commentBody += `#### 3️⃣ Checkov (GCP CIS IaC Policies) — \`${checkovBadge}\`\n\n`;
-        commentBody += `<details open>\n<summary><b>Click to View Detailed Checkov Audit & Remediation Guide</b></summary>\n\n`;
-
-        if (passedChecks.length > 0) {
-            commentBody += `##### ✅ Passed Checks (${passedChecks.length})\n`;
-            passedChecks.forEach(c => {
-                commentBody += `* \`PASSED ${c.id}\`: "${c.desc}" (Resource: \`${c.resource}\` in \`${c.file}\`)\n`;
-            });
-            commentBody += `\n`;
-        }
+        // 2. Collapsible Security Details
+        commentBody += `<details>\n<summary><b>🔍 View Security Scans Output & Remediation Guide</b></summary>\n\n`;
+        commentBody += `#### 1️⃣ Gitleaks Scan — \`${gitleaksBadge}\`\n\`\`\`text\n${gitleaksDetail}\n\`\`\`\n\n`;
+        commentBody += `#### 2️⃣ Trivy Scan — \`${trivyBadge}\`\n\`\`\`text\n${trivyDetail}\n\`\`\`\n\n`;
+        commentBody += `#### 3️⃣ Checkov CIS Policies — \`${checkovBadge}\`\n`;
+        commentBody += `* **Passed Checks**: \`${totalPassed}\` policies verified.\n`;
 
         if (failedChecks.length > 0) {
-            commentBody += `##### ❌ Failed Checks & How to Fix (${failedChecks.length})\n\n`;
+            commentBody += `\n##### ❌ Failed Checks & Fixes (${failedChecks.length})\n\n`;
             commentBody += `| Check ID | Policy Description | Impacted Resource | File | Recommended Fix |\n| :--- | :--- | :--- | :--- | :--- |\n`;
             failedChecks.forEach(f => {
                 commentBody += `| **\`${f.id}\`** | ${f.desc} | \`${f.resource}\` | \`${f.file}\` | ${f.fix} |\n`;
@@ -367,31 +366,46 @@ async function main() {
         }
         commentBody += `</details>\n\n---\n\n`;
 
-        // 5. Summarized Terraform Plan Section
-        commentBody += `### 📋 Infrastructure Execution Plan\n`;
+        // 3. Compact Terraform Plan Section
+        commentBody += `### 📋 Infrastructure Execution Plan\n\n`;
 
         for (const target of scope.targets) {
             const parsed = parseTerraformPlanJson(target.dir);
 
-            commentBody += `\n#### 🔹 **${target.name.toUpperCase()}** (\`${parsed.planSummary}\`)\n\n`;
-            commentBody += `| Action | Resource Type | Resource Name / ID | Key Details |\n`;
-            commentBody += `| :---: | :--- | :--- | :--- |\n`;
-            parsed.resources.forEach(r => {
-                commentBody += `| <kbd>${r.action}</kbd> | \`${r.type}\` | \`${r.name}\` | ${r.details} |\n`;
-            });
-            commentBody += `\n`;
+            commentBody += `#### 🔹 Layer: **${target.name.toUpperCase()}** (\`+${parsed.counts.toAdd} ~${parsed.counts.toChange} -${parsed.counts.toDestroy}\`)\n\n`;
+
+            if (parsed.grouped.length === 0) {
+                commentBody += `*No changes. Infrastructure is up-to-date.*\n\n`;
+            } else {
+                commentBody += `| Action | Resource Type | Count | Resource Name(s) |\n`;
+                commentBody += `| :---: | :--- | :---: | :--- |\n`;
+                parsed.grouped.forEach(g => {
+                    const namesStr = g.names.map(n => `\`${n}\``).join(', ');
+                    commentBody += `| ${g.action} | \`${g.type}\` | ${g.names.length} | ${namesStr} |\n`;
+                });
+                commentBody += `\n`;
+
+                // Collapsible detailed breakdown
+                commentBody += `<details>\n<summary><b>🔍 View Granular Resource Details (${parsed.resources.length} resources)</b></summary>\n\n`;
+                commentBody += `| Action | Address | Key Attributes |\n`;
+                commentBody += `| :---: | :--- | :--- |\n`;
+                parsed.resources.forEach(r => {
+                    commentBody += `| ${r.action} | \`${r.address}\` | ${r.details} |\n`;
+                });
+                commentBody += `\n</details>\n\n`;
+            }
 
             if (parsed.outputs.length > 0) {
-                commentBody += `<details>\n<summary><b>Click to View Output Changes (${parsed.outputs.length} Outputs)</b></summary>\n\n`;
+                commentBody += `<details>\n<summary><b>📦 View Output Changes (${parsed.outputs.length} outputs)</b></summary>\n\n`;
                 commentBody += `| Output Name | Action | Value / Preview |\n| :--- | :---: | :--- |\n`;
                 parsed.outputs.forEach(o => {
                     commentBody += `| \`${o.name}\` | \`${o.action}\` | \`${o.value}\` |\n`;
                 });
-                commentBody += `\n</details>\n`;
+                commentBody += `\n</details>\n\n`;
             }
         }
 
-        commentBody += `\n---\n*Automated PR Comment generated by Google Cloud Build Bot for Commit \`${COMMIT_SHA}\`*`;
+        commentBody += `---\n*Automated PR Comment generated by Google Cloud Build Bot for Commit \`${COMMIT_SHA}\`*`;
 
         // --------------------------------------------------------------------------
         // E. Post or Update GitHub Comment

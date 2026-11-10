@@ -18,7 +18,8 @@ terraform {
 
 
 provider "google" {
-  project = local.config.project_id
-  region  = local.config.region
+  project        = local.config.project_id
+  region         = local.config.region
+  default_labels = local.common_tags
 }
 

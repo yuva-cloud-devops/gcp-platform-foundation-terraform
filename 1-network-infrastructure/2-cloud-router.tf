@@ -8,9 +8,10 @@ module "cloud_router" {
   version = "~> 9.1"
 
   # Basic Configurations
-  name       = "${each.value.name}-${var.environment}"
-  region     = each.value.region
-  project_id = local.config.project_id
+  name        = "${each.value.name}-${var.environment}"
+  region      = each.value.region
+  project_id  = local.config.project_id
+  description = local.tag_description
 
   # VPC Configurations
   network = module.vpc[0].network_name
