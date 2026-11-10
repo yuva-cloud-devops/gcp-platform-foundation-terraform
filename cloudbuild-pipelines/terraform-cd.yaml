@@ -6,20 +6,77 @@
 
 steps:
   # ----------------------------------------------------------------------------
-  # Step 1: Detect Scope from Merged PR (Ordered: Network -> Security -> Compute -> Availability)
+  # Step 1: Detect Scope from Merged PR via GitHub App API
+  # (Ordered: Network -> Security -> Compute -> Availability)
   # ----------------------------------------------------------------------------
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
     id: 'detect-scope-from-pr'
     entrypoint: 'bash'
+    secretEnv: ['GITHUB_APP_PRIVATE_KEY']
     args:
       - '-c'
       - |
-        apt-get update && apt-get install -y jq git curl
+        apt-get update && apt-get install -y jq git curl openssl
         chmod +x cloudbuild-pipelines/scripts/*.sh
-        ./cloudbuild-pipelines/scripts/detect-cd-scope.sh \
-          "deployment_scope.json" \
-          "${_REPO_OWNER}" \
-          "${_REPO_NAME}"
+
+        echo "-------------------------------------------------------------------------------------------------------"
+        echo "🔑 Minting GitHub App JWT to detect merged PR for commit ${COMMIT_SHA}..."
+
+        NOW=$$(date +%s)
+        IAT=$$((NOW - 60))
+        EXP=$$((NOW + 540))
+
+        HEADER=$$(echo -n '{"alg":"RS256","typ":"JWT"}' | openssl base64 -e -A | tr '+/' '-_' | tr -d '=')
+        PAYLOAD=$$(echo -n "{\"iat\":$$IAT,\"exp\":$$EXP,\"iss\":\"${_GITHUB_APP_ID}\"}" | openssl base64 -e -A | tr '+/' '-_' | tr -d '=')
+
+        echo "$$GITHUB_APP_PRIVATE_KEY" > /tmp/app_key.pem
+        SIGNATURE=$$(echo -n "$${HEADER}.$${PAYLOAD}" | openssl dgst -sha256 -sign /tmp/app_key.pem | openssl base64 -e -A | tr '+/' '-_' | tr -d '=')
+        rm -f /tmp/app_key.pem
+        JWT="$${HEADER}.$${PAYLOAD}.$${SIGNATURE}"
+
+        INSTALL_ID=$$(curl -s -H "Authorization: Bearer $$JWT" -H "Accept: application/vnd.github+json" \
+          "https://api.github.com/repos/${_REPO_OWNER}/${_REPO_NAME}/installation" | jq -r '.id // empty')
+
+        if [ -z "$$INSTALL_ID" ]; then
+          echo "❌ Error: Could not obtain GitHub App Installation ID."
+          exit 1
+        fi
+
+        INSTALL_TOKEN=$$(curl -s -X POST -H "Authorization: Bearer $$JWT" -H "Accept: application/vnd.github+json" \
+          "https://api.github.com/app/installations/$$INSTALL_ID/access_tokens" | jq -r '.token // empty')
+
+        echo "🔍 Looking up Merged PR associated with commit ${COMMIT_SHA}..."
+        PR_JSON=$$(curl -s -H "Authorization: token $$INSTALL_TOKEN" -H "Accept: application/vnd.github+json" \
+          "https://api.github.com/repos/${_REPO_OWNER}/${_REPO_NAME}/commits/${COMMIT_SHA}/pulls")
+
+        PR_NUMBER=$$(echo "$$PR_JSON" | jq -r '.[0].number // empty')
+        echo "$$PR_JSON" | jq -r '.[0].body // empty' > pr_body.txt
+
+        # Fallback: If commit lookup returns empty, fetch the most recently merged PR on main
+        if [ -z "$$PR_NUMBER" ] || [ ! -s pr_body.txt ]; then
+          echo "ℹ️ Commit PR lookup empty; checking latest merged PR on main..."
+          CLOSED_PRS=$$(curl -s -H "Authorization: token $$INSTALL_TOKEN" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${_REPO_OWNER}/${_REPO_NAME}/pulls?state=closed&base=main&sort=updated&direction=desc&per_page=5")
+          PR_NUMBER=$$(echo "$$CLOSED_PRS" | jq -r '[.[] | select(.merged_at != null)][0].number // empty')
+          echo "$$CLOSED_PRS" | jq -r '[.[] | select(.merged_at != null)][0].body // empty' > pr_body.txt
+        fi
+
+        echo "✅ Detected Merged PR: #$${PR_NUMBER:-N/A}"
+        echo "-------------------------------------------------------------------------------------------------------"
+        echo "📄 Merged PR Deployment Request Content:"
+        cat pr_body.txt
+        echo ""
+        echo "-------------------------------------------------------------------------------------------------------"
+
+        ./cloudbuild-pipelines/scripts/validate-request.sh pr_body.txt
+
+        # Inject pr_number and action="apply" into deployment_scope.json
+        jq --arg pr "$${PR_NUMBER:-N/A}" '. + {pr_number: $pr, action: "apply"}' deployment_scope.json > deployment_scope.tmp
+        mv deployment_scope.tmp deployment_scope.json
+
+        echo "📋 Final CD deployment_scope.json:"
+        cat deployment_scope.json
+        echo "-------------------------------------------------------------------------------------------------------"
 
   # ----------------------------------------------------------------------------
   # Step 2: Validate Target YAML Configurations against JSON Schemas
@@ -152,7 +209,7 @@ substitutions:
   _STATE_BUCKET: 'gcp-remote-backend-tfstate-management-bucket'
   _REPO_OWNER: 'yuva-cloud-devops'
   _REPO_NAME: 'gcp-platform-foundation-terraform'
-  _GITHUB_APP_ID: '5622633' # <-- Put your GitHub App ID here
+  _GITHUB_APP_ID: '5622633'
 
 options:
   logging: CLOUD_LOGGING_ONLY
