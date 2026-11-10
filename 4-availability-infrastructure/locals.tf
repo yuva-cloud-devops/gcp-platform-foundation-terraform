@@ -77,7 +77,7 @@ locals {
         request_path        = try(local.lb_raw.backend.health_check.request_path, "/")
         port                = tonumber(try(local.lb_raw.backend.health_check.port, 8080))
         check_interval_sec  = tonumber(try(local.lb_raw.backend.health_check.check_interval_sec, 10))
-        timeout_sec         = tonumber(local.lb_raw.backend.health_check.timeout_sec, 5)
+        timeout_sec         = tonumber(try(local.lb_raw.backend.health_check.timeout_sec, 5))
         healthy_threshold   = tonumber(try(local.lb_raw.backend.health_check.healthy_threshold, 2))
         unhealthy_threshold = tonumber(try(local.lb_raw.backend.health_check.unhealthy_threshold, 3))
         host                = try(local.lb_raw.backend.health_check.host, null)
